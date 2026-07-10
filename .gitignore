@@ -1,0 +1,16 @@
+# Local scratch and retrospective notes
+.gitignored/
+
+# Build outputs
+bin/
+/tss
+
+# Local databases and generated runtime state
+*.db
+*.db-shm
+*.db-wal
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.tmp

@@ -1,0 +1,3 @@
+ internal/adapters/claude_test.go |  31 +++++++
+ internal/core/model.go           | 179 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 210 insertions(+)

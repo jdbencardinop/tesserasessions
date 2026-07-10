@@ -1,0 +1,520 @@
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..72047e7
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,178 @@
++# tesserasessions
++
++`tss` is a local-first CLI for inventorying coding-agent sessions across tools like GitHub Copilot CLI, Claude Code, Herdr, and tmux.
++
++It answers: "What agent sessions exist, what project are they for, when did they last move, and how do I get back to them?"
++
++## Scope
++
++The MVP is an inventory and control layer, not a replacement for agents or terminal multiplexers.
++
++In scope:
++
++- Scan local agent session stores in read-only mode.
++- Normalize sessions into a local SQLite inventory.
++- List, filter, and inspect sessions.
++- Prefer Herdr for live control when available; fall back to tmux.
++- Generate local/extractive summaries by default.
++- Track roadmap features with Tessera Patch (`tpatch`).
++
++Out of scope for now:
++
++- Full GUI.
++- Hosted sync or telemetry.
++- Automatic remote LLM summarization.
++- Deep t3code parsing before the core adapters are stable.
++- Replacing Herdr, tmux, Agent Sessions, or AgentTrace.
++
++## Install for local development
++
++```sh
++go build -o bin/tss ./cmd/tss
++```
++
++Or run directly:
++
++```sh
++go run ./cmd/tss --help
++```
++
++## Quick start
++
++```sh
++# Check config, source stores, optional backends, and inventory count.
++go run ./cmd/tss doctor
++
++# Scan all known sources.
++go run ./cmd/tss scan
++
++# List recent sessions.
++go run ./cmd/tss list
++
++# Inspect one session.
++go run ./cmd/tss show <session-id>
++
++# Print the command that would attach/resume.
++go run ./cmd/tss attach <session-id> --print
++
++# Create/update a local summary.
++go run ./cmd/tss summarize <session-id>
++```
++
++Once installed as `tss`, drop the `go run ./cmd/tss` prefix:
++
++```sh
++tss scan
++tss list --source claude --limit 20
++tss show claude-abc123
++```
++
++## Commands
++
++| Command | Purpose |
++| --- | --- |
++| `tss doctor` | Show config paths, source health, backend availability, and inventory count. |
++| `tss scan` | Refresh the local inventory from configured sources. |
++| `tss list` / `tss ls` | List indexed sessions with filters. |
++| `tss show <session>` | Show metadata, paths, summary, and resume/attach commands. |
++| `tss summarize <session>` | Generate a local/extractive title and goal summary. |
++| `tss search [query]` | Search by metadata/summary and optionally content; supports fzf selection. |
++| `tss title <session> <title>` | Set a manual title that future scans preserve. |
++| `tss mark <session> <status>` | Set a normalized session status. |
++| `tss pin <session>` | Pin a session so it sorts first. |
++| `tss tag <session> <tag[,tag...]>` | Replace session tags. |
++| `tss attach <session>` | Attach to a live runtime or run a native resume command. |
++| `tss open <session>` | Open a new Herdr workspace or tmux session in the same directory. |
++| `tss send <session> <text>` | Send text to a live Herdr/tmux runtime. |
++
++Useful flags:
++
++```sh
++tss scan --source claude
++tss list --source copilot --limit 10
++tss list --query tesseraspaces
++tss list --status needs_attention
++tss list --group-project --sort project
++tss list --pinned
++tss search auth --content
++tss search --fzf --show
++tss title <session> "Refactor auth middleware"
++tss mark <session> done
++tss pin <session>
++tss tag <session> mvp,review
++tss attach <session> --backend tmux --print
++tss open <session> --backend herdr --print
++tss --db /tmp/tss.db scan
++```
++
++## How it works
++
++`tss scan` runs source adapters and stores normalized records in SQLite.
++
++Initial adapters:
++
++- `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
++- `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
++- `herdr`: uses `herdr agent list --json` when Herdr is installed and running.
++- `tmux`: uses `tmux list-panes -a` when a tmux server is running.
++
++The inventory database lives at:
++
++```text
++~/.local/share/tesserasessions/sessions.db
++```
++
++The default config path is:
++
++```text
++~/.config/tesserasessions/config.yaml
++```
++
++Overrides:
++
++```sh
++TSS_CONFIG=/path/to/config.yaml tss scan
++TSS_DATA_DIR=/path/to/data tss scan
++tss --db /path/to/sessions.db list
++```
++
++## Privacy and safety
++
++- Scanners are read-only against agent session stores.
++- Transcript parsing is lazy and only used where needed, such as `summarize`.
++- Content search is opt-in with `tss search --content`.
++- fzf selection is optional with `tss search --fzf`; non-interactive search works without fzf.
++- Summaries are local/extractive by default.
++- Remote LLM summarization is intentionally not automatic and should remain explicit opt-in.
++- `attach`, `open`, and `send` support `--print` so commands can be reviewed before execution.
++
++## Tessera Patch workflow
++
++This repo uses `tpatch` to track feature work.
++
++Common commands:
++
++```sh
++tpatch status --dag
++tpatch next <feature-slug>
++tpatch analyze <feature-slug>
++tpatch define <feature-slug>
++tpatch explore <feature-slug>
++tpatch implement <feature-slug>
++tpatch apply <feature-slug>
++tpatch test <feature-slug>
++tpatch record <feature-slug>
++```
++
++Configured test command:
++
++```sh
++go test ./...
++```
++
++Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [docs/roadmap.md](docs/roadmap.md).
++
++## More docs
++
++- [Cheatsheet](docs/cheatsheet.md)
++- [Roadmap](docs/roadmap.md)
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+new file mode 100644
+index 0000000..a74186c
+--- /dev/null
++++ b/docs/cheatsheet.md
+@@ -0,0 +1,203 @@
++# tss cheatsheet
++
++## Daily loop
++
++```sh
++tss doctor
++tss scan
++tss list --limit 20
++tss show <session-id>
++tss attach <session-id> --print
++```
++
++## Find sessions
++
++```sh
++tss list
++tss list --source claude
++tss list --source copilot
++tss list --query tesseraspaces
++tss list --status needs_attention
++tss list --tag review
++tss list --pinned
++tss list --sort project --group-project
++tss list --sort title
++tss list --json
++```
++
++## Search and fuzzy pick
++
++```sh
++tss search auth
++tss search auth --source claude
++tss search auth --content
++tss search --fzf
++tss search auth --fzf --show
++```
++
++Search checks title, summary, project path, native id, agent, and tags. `--content` lazily scans supported raw files/directories. `--fzf` requires `fzf` on `PATH` and prints the selected session id unless `--show` is used.
++
++## Inspect one session
++
++```sh
++tss show <session-id>
++tss show <session-id-prefix>
++tss show <native-session-id>
++```
++
++Session IDs are stable hashes like:
++
++```text
++claude-5d96f6be2a1e
++copilot-25e90acc1fc7
++tmux-...
++herdr-...
++```
++
++## Refresh inventory
++
++```sh
++tss scan
++tss scan --source claude
++tss scan --source copilot
++tss scan --source herdr
++tss scan --source tmux
++tss scan --json
++```
++
++## Summarize locally
++
++```sh
++tss summarize <session-id>
++```
++
++Current behavior:
++
++- Reads recent transcript candidates for supported historical sources.
++- Uses local/extractive heuristics.
++- Updates title, goal summary, and sometimes status.
++- Preserves manual titles set with `tss title`.
++- Does not call a remote LLM by default.
++
++## Curate sessions
++
++```sh
++tss title <session-id> "Fix auth middleware"
++tss mark <session-id> needs_attention
++tss mark <session-id> done
++tss pin <session-id>
++tss pin <session-id> --unpin
++tss tag <session-id> mvp,review
++```
++
++Valid statuses:
++
++```text
++needs_attention working idle done stale unknown
++```
++
++## Attach, open, and send
++
++Prefer review mode first:
++
++```sh
++tss attach <session-id> --print
++tss open <session-id> --print
++tss send <session-id> "continue from the latest TODO" --print
++```
++
++Run the command directly:
++
++```sh
++tss attach <session-id>
++tss open <session-id>
++tss send <session-id> "please summarize your current blocker"
++```
++
++Backend selection:
++
++```sh
++tss attach <session-id> --backend herdr
++tss attach <session-id> --backend tmux
++tss open <session-id> --backend tmux
++tss send <session-id> --backend herdr "status?"
++```
++
++Default backend order:
++
++1. Herdr, when installed and a matching live runtime exists.
++2. tmux fallback.
++3. Native resume command, when the historical adapter knows one.
++
++## Config and data
++
++Default config:
++
++```text
++~/.config/tesserasessions/config.yaml
++```
++
++Default database:
++
++```text
++~/.local/share/tesserasessions/sessions.db
++```
++
++Override paths:
++
++```sh
++TSS_CONFIG=/tmp/tss.yaml tss scan
++TSS_DATA_DIR=/tmp/tss-data tss scan
++tss --db /tmp/tss.db list
++```
++
++## Source adapters
++
++| Source | What it scans |
++| --- | --- |
++| `claude` | `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
++| `copilot` | `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
++| `herdr` | `herdr agent list --json` |
++| `tmux` | `tmux list-panes -a` |
++
++## tpatch feature workflow
++
++Check roadmap state:
++
++```sh
++tpatch status --dag
++tpatch status <feature-slug>
++tpatch next <feature-slug>
++```
++
++Normal lifecycle:
++
++```sh
++tpatch analyze <feature-slug>
++tpatch define <feature-slug>
++tpatch explore <feature-slug>
++tpatch implement <feature-slug>
++tpatch apply <feature-slug>
++tpatch test <feature-slug>
++tpatch record <feature-slug>
++```
++
++Useful dependency commands:
++
++```sh
++tpatch feature deps <feature-slug>
++tpatch feature deps --validate-all
++```
++
++Feature files live under:
++
++```text
++.tpatch/features/<feature-slug>/
++```
++
++## Development checks
++
++```sh
++go test ./...
++go build -o bin/tss ./cmd/tss
++```
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+new file mode 100644
+index 0000000..101cc4d
+--- /dev/null
++++ b/docs/roadmap.md
+@@ -0,0 +1,121 @@
++# Roadmap
++
++This roadmap is tracked with Tessera Patch. Source of truth for feature state is `.tpatch/FEATURES.md`; this document explains the product intent and sequencing.
++
++## Workflow
++
++Before working on a tracked feature:
++
++```sh
++tpatch status <feature-slug>
++tpatch next <feature-slug>
++```
++
++Then advance the feature through the lifecycle:
++
++```text
++requested -> analyzed -> defined -> implementing -> applied -> active
++```
++
++For this repo, `tpatch test <feature-slug>` runs:
++
++```sh
++go test ./...
++```
++
++## Feature DAG
++
++```text
++cli-inventory-core
++|-- agent-source-expansion       (hard)
++|-- docs-guide-cheatsheet        (soft)
++|-- live-herdr-tmux-control      (hard)
++|-- smart-session-summaries      (hard)
++`-- session-ux-roadmap           (hard)
++    `-- smart-session-summaries  (soft ordering hint)
++```
++
++## Tracked features
++
++| Slug | Phase | Goal | Notes |
++| --- | --- | --- | --- |
++| `cli-inventory-core` | MVP foundation | Standalone Go CLI, SQLite inventory, Claude/Copilot scans, Herdr/tmux scaffolding, and basic commands. | Initial implementation exists; tpatch was adopted after the first slice, so record this feature before a real commit/landing flow. |
++| `docs-guide-cheatsheet` | Docs slice | README, cheatsheet, scope, architecture, command examples, and tpatch workflow docs. | Depends softly on the core because docs can evolve while core changes. |
++| `live-herdr-tmux-control` | Next live-control hardening | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Herdr remains preferred; tmux remains fallback. |
++| `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
++| `agent-source-expansion` | Adapter expansion | Add Hermes Agent first, then t3code once the core data model is stable. | Parsers should stay read-only and metadata-first. |
++| `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
++
++## Milestones
++
++### M0 - Working local inventory
++
++Done enough for local use:
++
++- `tss doctor`
++- `tss scan`
++- `tss list`
++- `tss show`
++- Claude and Copilot metadata adapters
++- SQLite inventory
++- Initial Herdr/tmux live adapter scaffolding
++- Local/extractive summary command
++
++### M1 - Documentation and tracked workflow
++
++Current slice:
++
++- README with scope and quick start.
++- Cheatsheet for daily commands.
++- Roadmap mapped to tpatch feature slugs.
++- `.tpatch/` initialized with feature dependencies.
++- `tpatch` test command set to `go test ./...`.
++
++### M2 - Live control hardening
++
++Target:
++
++- Better matching between historical sessions and live Herdr/tmux panes.
++- Safer `send` and `run` behavior.
++- `run <session> -- <command>` command.
++- Clear status mapping: `needs_attention`, `working`, `idle`, `done`, `stale`, `unknown`.
++- Herdr-first behavior when installed, tmux fallback when not.
++
++### M3 - Summary quality
++
++Target:
++
++- Better first-prompt/latest-prompt extraction. Initial local candidate filtering and title/goal phrasing are implemented.
++- Recent pane-output summarization for tmux and Herdr.
++- Blocker and next-action fields.
++- Confidence scoring based on source quality.
++- Explicit opt-in remote summarizer command.
++
++### M4 - More source adapters
++
++Target:
++
++- Hermes Agent state database/sessions.
++- t3code after core schema stabilizes.
++- Optional Codex/OpenCode adapter if local stores are present.
++- Parser fixtures using redacted or synthetic data.
++
++### M5 - Operator UX
++
++Target:
++
++- Tags and manual titles. Initial `title` and `tag` commands are implemented.
++- Pin/done commands. Initial `pin` and `mark` commands are implemented.
++- Project grouping and stale filters. Initial `--group-project`, `--sort`, `--tag`, and `--pinned` options are implemented.
++- Fuzzy/content search. Initial `tss search`, `--content`, and optional `--fzf` are implemented.
++- Shell completions.
++- Better JSON output for scripting.
++
++## Design principles
++
++- Local first: no telemetry, no hosted database.
++- Metadata first: avoid transcript parsing unless requested.
++- Read-only source scans: do not mutate agent stores.
++- Herdr first for live state; tmux fallback for portability.
++- Explicit execution: support `--print` on potentially interactive commands.
++- tpatch tracked: every roadmap slice should have a feature slug before implementation.

@@ -1,0 +1,22 @@
+{
+  "id": "docs-guide-cheatsheet",
+  "slug": "docs-guide-cheatsheet",
+  "title": "Document tss for day-to-day use: create a README plus docs/cheatsheet.md that explain scope, architecture, storage locations, commands, examples, safety/privacy defaults, and the tpatch tracking workflow.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-07-07T04:31:46Z",
+  "updated_at": "2026-07-10T05:59:16Z",
+  "last_command": "record",
+  "notes": "Patch recorded",
+  "apply": {
+    "completed_at": "2026-07-07T04:33:48Z",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "depends_on": [
+    {
+      "slug": "cli-inventory-core",
+      "kind": "soft"
+    }
+  ]
+}

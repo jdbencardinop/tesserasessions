@@ -1,0 +1,22 @@
+{
+  "id": "smart-session-summaries",
+  "slug": "smart-session-summaries",
+  "title": "Improve smart session summaries: generate useful local/extractive titles, goals, blockers, next actions, and confidence from transcripts and pane output; keep remote LLM summarization explicitly opt-in.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-07-07T04:31:46Z",
+  "updated_at": "2026-07-10T05:59:31Z",
+  "last_command": "record",
+  "notes": "Patch recorded",
+  "apply": {
+    "completed_at": "2026-07-10T05:53:40Z",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "depends_on": [
+    {
+      "slug": "cli-inventory-core",
+      "kind": "hard"
+    }
+  ]
+}

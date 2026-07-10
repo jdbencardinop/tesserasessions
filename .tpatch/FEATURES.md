@@ -1,0 +1,10 @@
+# Tracked Features
+
+| Slug | Title | State | Compatibility |
+|------|-------|-------|---------------|
+| `agent-source-expansion` | Expand agent-source adapters beyond Claude and Copilot, starting with Hermes Agent and later t3code once the core inventory model is stable; keep parsers read-only and metadata-first. | requested | unknown |
+| `cli-inventory-core` | Build the foundation for tss: a standalone local-first Go CLI that scans Claude Code and GitHub Copilot CLI session stores, stores normalized session metadata in SQLite, and exposes doctor, scan, list, show, attach/open/send command scaffolding. | applied | unknown |
+| `docs-guide-cheatsheet` | Document tss for day-to-day use: create a README plus docs/cheatsheet.md that explain scope, architecture, storage locations, commands, examples, safety/privacy defaults, and the tpatch tracking workflow. | applied | unknown |
+| `live-herdr-tmux-control` | Implement robust live session control through Herdr-first and tmux-fallback adapters: discover live panes, attach/resume sessions, open new panes/windows in the same directory, send prompts, and run commands safely. | requested | unknown |
+| `session-ux-roadmap` | Improve session UX with filters, grouping, tags, pin/done markers, stale thresholds, shell completions, and roadmap-driven workflows for managing many agent tasks. | applied | unknown |
+| `smart-session-summaries` | Improve smart session summaries: generate useful local/extractive titles, goals, blockers, next actions, and confidence from transcripts and pane output; keep remote LLM summarization explicitly opt-in. | applied | unknown |

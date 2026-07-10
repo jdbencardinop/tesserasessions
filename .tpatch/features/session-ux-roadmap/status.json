@@ -1,0 +1,26 @@
+{
+  "id": "session-ux-roadmap",
+  "slug": "session-ux-roadmap",
+  "title": "Improve session UX with filters, grouping, tags, pin/done markers, stale thresholds, shell completions, and roadmap-driven workflows for managing many agent tasks.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-07-07T04:31:46Z",
+  "updated_at": "2026-07-10T05:59:30Z",
+  "last_command": "record",
+  "notes": "Patch recorded",
+  "apply": {
+    "completed_at": "2026-07-10T05:53:40Z",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "depends_on": [
+    {
+      "slug": "cli-inventory-core",
+      "kind": "hard"
+    },
+    {
+      "slug": "smart-session-summaries",
+      "kind": "soft"
+    }
+  ]
+}

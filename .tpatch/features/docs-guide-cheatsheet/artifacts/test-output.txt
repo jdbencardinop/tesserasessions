@@ -1,0 +1,11 @@
+# Test run — 2026-07-07T04:33:48Z
+# Command: go test ./...
+# Directory: /path/to/tesserasessions
+
+?   	github.com/jdbencardinop/tesserasessions/cmd/tss	[no test files]
+ok  	github.com/jdbencardinop/tesserasessions/internal/adapters	(cached)
+?   	github.com/jdbencardinop/tesserasessions/internal/cli	[no test files]
+?   	github.com/jdbencardinop/tesserasessions/internal/config	[no test files]
+ok  	github.com/jdbencardinop/tesserasessions/internal/core	(cached)
+ok  	github.com/jdbencardinop/tesserasessions/internal/store	(cached)
+?   	github.com/jdbencardinop/tesserasessions/internal/summarize	[no test files]

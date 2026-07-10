@@ -1,0 +1,22 @@
+{
+  "id": "cli-inventory-core",
+  "slug": "cli-inventory-core",
+  "title": "Build the foundation for tss: a standalone local-first Go CLI that scans Claude Code and GitHub Copilot CLI session stores, stores normalized session metadata in SQLite, and exposes doctor, scan, list, show, attach/open/send command scaffolding.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-07-07T04:31:46Z",
+  "updated_at": "2026-07-10T06:00:02Z",
+  "last_command": "verify",
+  "notes": "Patch recorded",
+  "apply": {
+    "completed_at": "2026-07-10T05:59:53Z",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "verify": {
+    "verified_at": "2026-07-10T06:00:02Z",
+    "passed": false,
+    "recipe_hash_at_verify": "71a61188f05d5d31c3f79a70a61d4d166d09d53fa770da408c8b31328407b1e8",
+    "patch_hash_at_verify": "c2e526865df3c89947fa3f341fb23549808898f797e85c3b20f99fa6176e5f5e"
+  }
+}

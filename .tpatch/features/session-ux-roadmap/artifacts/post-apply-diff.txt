@@ -1,0 +1,3 @@
+ internal/cli/root.go   | 827 +++++++++++++++++++++++++++++++++++++++++++++++++
+ internal/core/model.go | 179 +++++++++++
+ 2 files changed, 1006 insertions(+)

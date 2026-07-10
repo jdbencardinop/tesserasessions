@@ -1,0 +1,7 @@
+{
+  "slug": "docs-guide-cheatsheet",
+  "completed_at": "2026-07-07T04:33:48Z",
+  "has_patch": false,
+  "validation_status": "passed",
+  "validation_notes": "tpatch test — command: go test ./..."
+}
