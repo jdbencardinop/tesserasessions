@@ -2,12 +2,17 @@
   "id": "live-herdr-tmux-control",
   "slug": "live-herdr-tmux-control",
   "title": "Implement robust live session control through Herdr-first and tmux-fallback adapters: discover live panes, attach/resume sessions, open new panes/windows in the same directory, send prompts, and run commands safely.",
-  "state": "requested",
+  "state": "applied",
   "compatibility": "unknown",
   "requested_at": "2026-07-07T04:31:46Z",
-  "updated_at": "2026-07-07T04:31:46Z",
-  "last_command": "add",
-  "apply": {},
+  "updated_at": "2026-07-22T14:33:20Z",
+  "last_command": "record",
+  "notes": "Patch recorded",
+  "apply": {
+    "completed_at": "2026-07-22T14:33:26Z",
+    "base_commit": "1d915dba7989dca23eb031f729a8df1321709144",
+    "has_patch": true
+  },
   "reconcile": {},
   "depends_on": [
     {

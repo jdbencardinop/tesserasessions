@@ -112,6 +112,8 @@ Run the command directly:
 tss attach <session-id>
 tss open <session-id>
 tss send <session-id> "please summarize your current blocker"
+tss read <session-id> --lines 120
+tss run <session-id> -- go test ./...
 ```
 
 Backend selection:
@@ -121,6 +123,8 @@ tss attach <session-id> --backend herdr
 tss attach <session-id> --backend tmux
 tss open <session-id> --backend tmux
 tss send <session-id> --backend herdr "status?"
+tss read <session-id> --backend tmux --print
+tss run <session-id> --backend herdr --print -- npm test
 ```
 
 Default backend order:

@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "feature": "live-herdr-tmux-control",
+  "current_generation": 1,
+  "generations": [
+    {
+      "generation": 1,
+      "generation_id": "pg_a5d81f0bd6a5",
+      "kind": "record",
+      "patch_sha256": "234946cf9056fc84c65b25e36c0c980261df73c8eb3d6faf9fd9a7e4d0b00f96",
+      "git_patch_id": "74d96f14f0e7d5ec1af0db94f094f88a92d5ce03",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "98f9e296367f6dae0b9e06e16651f2a83501e1b9b4ba76e4a7fa737a52977534",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "patches/001-record.patch",
+      "base_commit": "1d915dba7989dca23eb031f729a8df1321709144",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [
+          "README.md",
+          "docs/cheatsheet.md",
+          "docs/roadmap.md",
+          "internal/adapters/herdr.go",
+          "internal/adapters/herdr_test.go",
+          "internal/cli/live_commands_test.go",
+          "internal/cli/root.go"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "internal/adapters/herdr.go",
+        "internal/adapters/herdr_test.go",
+        "internal/cli/live_commands_test.go",
+        "internal/cli/root.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    }
+  ]
+}

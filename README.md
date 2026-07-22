@@ -97,6 +97,8 @@ tss show claude-abc123
 | `tss attach <session>` | Attach to a live runtime or run a native resume command. |
 | `tss open <session>` | Open a new Herdr workspace or tmux session in the same directory. |
 | `tss send <session> <text>` | Send text to a live Herdr/tmux runtime. |
+| `tss read <session>` | Read recent output from a live Herdr/tmux runtime. |
+| `tss run <session> -- <command>` | Run a command in a new live pane for the session directory. |
 
 Useful flags:
 
@@ -115,6 +117,8 @@ tss pin <session>
 tss tag <session> mvp,review
 tss attach <session> --backend tmux --print
 tss open <session> --backend herdr --print
+tss read <session> --lines 120
+tss run <session> -- go test ./...
 tss --db /tmp/tss.db scan
 ```
 
@@ -126,7 +130,7 @@ Initial adapters:
 
 - `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
 - `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
-- `herdr`: uses `herdr agent list --json` when Herdr is installed and running.
+- `herdr`: uses `herdr agent list --json` when Herdr is installed and running, preserving agent target and pane IDs for live controls.
 - `tmux`: uses `tmux list-panes -a` when a tmux server is running.
 
 The inventory database lives at:
@@ -157,7 +161,7 @@ tss --db /path/to/sessions.db list
 - fzf selection is optional with `tss search --fzf`; non-interactive search works without fzf.
 - Summaries are local/extractive by default.
 - Remote LLM summarization is intentionally not automatic and should remain explicit opt-in.
-- `attach`, `open`, and `send` support `--print` so commands can be reviewed before execution.
+- `attach`, `open`, `send`, `read`, and `run` support `--print` so commands can be reviewed before execution.
 
 ## Tessera Patch workflow
 

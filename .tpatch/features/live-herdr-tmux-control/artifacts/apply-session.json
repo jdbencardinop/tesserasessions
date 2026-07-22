@@ -1,0 +1,8 @@
+{
+  "slug": "live-herdr-tmux-control",
+  "completed_at": "2026-07-22T14:33:26Z",
+  "base_commit": "1d915dba7989dca23eb031f729a8df1321709144",
+  "has_patch": true,
+  "validation_status": "passed",
+  "validation_notes": "tpatch test — command: go test ./..."
+}

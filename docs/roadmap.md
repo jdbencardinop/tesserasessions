@@ -76,8 +76,9 @@ Current slice:
 Target:
 
 - Better matching between historical sessions and live Herdr/tmux panes.
-- Safer `send` and `run` behavior.
-- `run <session> -- <command>` command.
+- Safer `send` and `run` behavior. Initial Herdr `agent prompt`, tmux `send-keys`, and `run` command generation are implemented.
+- `run <session> -- <command>` command. Initial Herdr/tmux implementation is added.
+- `read <session>` command for recent live output is added.
 - Clear status mapping: `needs_attention`, `working`, `idle`, `done`, `stale`, `unknown`.
 - Herdr-first behavior when installed, tmux fallback when not.
 

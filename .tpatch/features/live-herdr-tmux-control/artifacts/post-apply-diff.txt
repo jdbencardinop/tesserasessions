@@ -1,0 +1,6 @@
+ README.md                  |   8 ++-
+ docs/cheatsheet.md         |   4 ++
+ docs/roadmap.md            |   5 +-
+ internal/adapters/herdr.go | 109 ++++++++++++++++++++++++++++---------
+ internal/cli/root.go       | 131 ++++++++++++++++++++++++++++++++++++++++++++-
+ 5 files changed, 227 insertions(+), 30 deletions(-)

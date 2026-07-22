@@ -71,6 +71,8 @@ func Execute() error {
 		app.attachCmd(),
 		app.openCmd(),
 		app.sendCmd(),
+		app.readCmd(),
+		app.runCmd(),
 	)
 	return root.Execute()
 }
@@ -609,6 +611,90 @@ func (a *appContext) sendCmd() *cobra.Command {
 	return cmd
 }
 
+func (a *appContext) readCmd() *cobra.Command {
+	var printOnly bool
+	var backend string
+	var lines int
+	cmd := &cobra.Command{
+		Use:   "read <session>",
+		Short: "Read recent output from a live session",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := a.load()
+			if err != nil {
+				return err
+			}
+			db, err := a.openStore(cfg)
+			if err != nil {
+				return err
+			}
+			defer db.Close() //nolint:errcheck
+			sess, err := db.GetSession(cmd.Context(), args[0])
+			if err != nil {
+				return friendlySessionErr(args[0], err)
+			}
+			rt, err := db.RuntimeForSession(cmd.Context(), sess.ID, firstNonEmpty(backend, cfg.Live.DefaultBackend))
+			if err != nil {
+				return fmt.Errorf("no live runtime found for %s; run tss scan while the session is open", sess.ID)
+			}
+			command, err := readCommand(rt, lines)
+			if err != nil {
+				return err
+			}
+			if printOnly {
+				fmt.Println(command)
+				return nil
+			}
+			return runInteractive(command)
+		},
+	}
+	cmd.Flags().IntVar(&lines, "lines", 80, "recent lines to read")
+	cmd.Flags().BoolVar(&printOnly, "print", false, "print command instead of running it")
+	cmd.Flags().StringVar(&backend, "backend", "", "prefer backend (herdr or tmux)")
+	return cmd
+}
+
+func (a *appContext) runCmd() *cobra.Command {
+	var printOnly bool
+	var backend string
+	cmd := &cobra.Command{
+		Use:   "run <session> -- <command>",
+		Short: "Run a command in a new live pane for the session directory",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := a.load()
+			if err != nil {
+				return err
+			}
+			db, err := a.openStore(cfg)
+			if err != nil {
+				return err
+			}
+			defer db.Close() //nolint:errcheck
+			sess, err := db.GetSession(cmd.Context(), args[0])
+			if err != nil {
+				return friendlySessionErr(args[0], err)
+			}
+			rt, err := db.RuntimeForSession(cmd.Context(), sess.ID, firstNonEmpty(backend, cfg.Live.DefaultBackend))
+			if err != nil {
+				return fmt.Errorf("no live runtime found for %s; run tss scan while the session is open", sess.ID)
+			}
+			command, err := runCommand(rt, sess, strings.Join(args[1:], " "))
+			if err != nil {
+				return err
+			}
+			if printOnly {
+				fmt.Println(command)
+				return nil
+			}
+			return runInteractive(command)
+		},
+	}
+	cmd.Flags().BoolVar(&printOnly, "print", false, "print command instead of running it")
+	cmd.Flags().StringVar(&backend, "backend", "", "prefer backend (herdr or tmux)")
+	return cmd
+}
+
 func (a *appContext) sessionForMutation(cmd *cobra.Command, ref string) (*store.Store, core.Session, error) {
 	cfg, err := a.load()
 	if err != nil {
@@ -793,11 +879,54 @@ func openCommand(backend string, sess core.Session) string {
 func sendCommand(rt core.RuntimeInstance, text string) (string, error) {
 	switch rt.Backend {
 	case "herdr":
-		return "herdr agent send " + core.ShellQuote(rt.NativeID) + " " + core.ShellQuote(text), nil
+		return "herdr agent prompt " + core.ShellQuote(rt.NativeID) + " " + core.ShellQuote(text), nil
 	case "tmux":
 		return "tmux send-keys -t " + core.ShellQuote(rt.NativeID) + " " + core.ShellQuote(text) + " Enter", nil
 	default:
 		return "", fmt.Errorf("backend %q cannot send text yet", rt.Backend)
+	}
+}
+
+func readCommand(rt core.RuntimeInstance, lines int) (string, error) {
+	if lines <= 0 {
+		lines = 80
+	}
+	switch rt.Backend {
+	case "herdr":
+		return "herdr agent read " + core.ShellQuote(rt.NativeID) + " --source recent --lines " + fmt.Sprint(lines), nil
+	case "tmux":
+		return "tmux capture-pane -p -t " + core.ShellQuote(rt.NativeID) + " -S -" + fmt.Sprint(lines), nil
+	default:
+		return "", fmt.Errorf("backend %q cannot read output yet", rt.Backend)
+	}
+}
+
+func runCommand(rt core.RuntimeInstance, sess core.Session, command string) (string, error) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", fmt.Errorf("command cannot be empty")
+	}
+	cwd := firstNonEmpty(rt.ProjectPath, sess.ProjectPath)
+	switch rt.Backend {
+	case "herdr":
+		pane := firstNonEmpty(rt.Surface, rt.NativeID)
+		if pane == "" {
+			return "", fmt.Errorf("herdr runtime has no pane target")
+		}
+		split := "herdr pane split " + core.ShellQuote(pane) + " --direction right --no-focus"
+		if cwd != "" {
+			split += " --cwd " + core.ShellQuote(cwd)
+		}
+		return "pane=$(" + split + " | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"pane\"][\"pane_id\"])')" +
+			" && herdr pane run \"$pane\" " + core.ShellQuote(command), nil
+	case "tmux":
+		args := "tmux split-window -h -t " + core.ShellQuote(rt.NativeID)
+		if cwd != "" {
+			args += " -c " + core.ShellQuote(cwd)
+		}
+		return args + " " + core.ShellQuote(command), nil
+	default:
+		return "", fmt.Errorf("backend %q cannot run commands yet", rt.Backend)
 	}
 }
 

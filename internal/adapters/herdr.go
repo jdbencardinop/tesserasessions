@@ -36,35 +36,39 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
 	}
 	now := time.Now().UTC()
 	for _, item := range objectList(payload) {
-		nativeID := firstString(item, "id", "agent_id", "pane_id", "terminal_id", "name")
-		if nativeID == "" {
+		target, paneID := herdrTarget(item)
+		if target == "" {
 			continue
 		}
-		cwd := firstString(item, "cwd", "project_path", "foreground_cwd")
-		agent := firstString(item, "agent", "label", "name", "display_agent")
-		status := normalizeStatus(firstString(item, "status", "state", "agent_state"))
+		cwd := firstString(item, "foreground_cwd", "cwd", "project_path", "workspace_cwd")
+		agent := firstNonEmpty(firstString(item, "agent", "kind", "agent_kind", "label", "display_agent"), "agent")
+		status := normalizeStatus(firstString(item, "status", "state", "agent_state", "lifecycle_state"))
 		if status == "" {
 			status = core.StatusUnknown
 		}
-		title := firstString(item, "title", "name", "label")
+		title := firstString(item, "title", "display_title", "name", "label")
 		if title == "" {
-			title = "Herdr: " + core.Truncate(nativeID, 32)
+			title = "Herdr: " + core.Truncate(target, 32)
 		}
-		session := core.NewSession("herdr", nativeID)
+		session := core.NewSession("herdr", target)
 		session.ProjectPath = cwd
-		session.Agent = firstNonEmpty(agent, "agent")
+		session.Agent = agent
 		session.Title = title
 		session.Status = status
 		session.LastActivityAt = now
 		session.CreatedAt = now
-		session.AttachCommand = "herdr agent attach " + core.ShellQuote(nativeID)
+		session.AttachCommand = "herdr agent attach " + core.ShellQuote(target)
+		if ref := agentSessionRef(item); ref != "" {
+			session.ResumeCommand = resumeCommand(agent, ref)
+			session.RawPath = ref
+		}
 		result.Sessions = append(result.Sessions, session)
 		result.Runtimes = append(result.Runtimes, core.RuntimeInstance{
-			ID:            core.RuntimeID("herdr", nativeID),
+			ID:            core.RuntimeID("herdr", target),
 			SessionID:     session.ID,
 			Backend:       "herdr",
-			NativeID:      nativeID,
-			Surface:       nativeID,
+			NativeID:      target,
+			Surface:       firstNonEmpty(paneID, target),
 			ProjectPath:   cwd,
 			Command:       agent,
 			Status:        status,
@@ -80,9 +84,18 @@ func objectList(v any) []map[string]any {
 	case []any:
 		return mapsFromArray(x)
 	case map[string]any:
-		for _, key := range []string{"agents", "items", "data", "results", "panes"} {
-			if arr, ok := x[key].([]any); ok {
-				return mapsFromArray(arr)
+		for _, key := range []string{"agents", "items", "data", "results", "panes", "workspaces", "tabs"} {
+			if nested, ok := x[key]; ok {
+				if list := objectList(nested); len(list) > 0 {
+					return list
+				}
+			}
+		}
+		for _, key := range []string{"result", "response"} {
+			if nested, ok := x[key]; ok {
+				if list := objectList(nested); len(list) > 0 {
+					return list
+				}
 			}
 		}
 		return []map[string]any{x}
@@ -104,19 +117,65 @@ func mapsFromArray(arr []any) []map[string]any {
 func firstString(m map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if v, ok := m[key]; ok {
-			switch t := v.(type) {
-			case string:
-				if strings.TrimSpace(t) != "" {
-					return strings.TrimSpace(t)
-				}
-			case map[string]any:
-				if s := firstString(t, "id", "name", "label", "path", "state", "status"); s != "" {
-					return s
-				}
+			if s := stringFromAny(v); s != "" {
+				return s
 			}
 		}
 	}
 	return ""
+}
+
+func stringFromAny(v any) string {
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case map[string]any:
+		return firstString(t, "pane_id", "id", "name", "label", "path", "state", "status", "cwd")
+	default:
+		return ""
+	}
+}
+
+func herdrTarget(item map[string]any) (target, paneID string) {
+	paneID = firstString(item, "pane_id", "paneId", "public_pane_id")
+	target = firstString(item, "name", "agent_name", "agent_id")
+	if target == "" {
+		target = firstString(item, "id")
+	}
+	if target == "" {
+		target = paneID
+	}
+	if paneID == "" {
+		paneID = firstString(item, "terminal_id", "terminalId")
+	}
+	return target, paneID
+}
+
+func agentSessionRef(item map[string]any) string {
+	if ref := firstString(item, "agent_session_id", "session_id", "agent_session_path", "session_path"); ref != "" {
+		return ref
+	}
+	if nested, ok := item["agent_session"].(map[string]any); ok {
+		return firstString(nested, "id", "session_id", "path", "agent_session_path")
+	}
+	return ""
+}
+
+func resumeCommand(agent, ref string) string {
+	switch strings.ToLower(agent) {
+	case "claude", "claude code", "claude-code":
+		return "claude --resume " + core.ShellQuote(ref)
+	case "copilot", "github copilot cli":
+		return "copilot --resume=" + core.ShellQuote(ref)
+	case "hermes", "hermes agent":
+		return "hermes --resume " + core.ShellQuote(ref)
+	case "opencode":
+		return "opencode --session " + core.ShellQuote(ref)
+	case "codex":
+		return "codex resume " + core.ShellQuote(ref)
+	default:
+		return ""
+	}
 }
 
 func normalizeStatus(status string) string {

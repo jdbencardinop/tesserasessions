@@ -1,0 +1,516 @@
+diff --git a/README.md b/README.md
+index 27887a0..fcb1950 100644
+--- a/README.md
++++ b/README.md
+@@ -97,6 +97,8 @@ tss show claude-abc123
+ | `tss attach <session>` | Attach to a live runtime or run a native resume command. |
+ | `tss open <session>` | Open a new Herdr workspace or tmux session in the same directory. |
+ | `tss send <session> <text>` | Send text to a live Herdr/tmux runtime. |
++| `tss read <session>` | Read recent output from a live Herdr/tmux runtime. |
++| `tss run <session> -- <command>` | Run a command in a new live pane for the session directory. |
+ 
+ Useful flags:
+ 
+@@ -115,6 +117,8 @@ tss pin <session>
+ tss tag <session> mvp,review
+ tss attach <session> --backend tmux --print
+ tss open <session> --backend herdr --print
++tss read <session> --lines 120
++tss run <session> -- go test ./...
+ tss --db /tmp/tss.db scan
+ ```
+ 
+@@ -126,7 +130,7 @@ Initial adapters:
+ 
+ - `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
+ - `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
+-- `herdr`: uses `herdr agent list --json` when Herdr is installed and running.
++- `herdr`: uses `herdr agent list --json` when Herdr is installed and running, preserving agent target and pane IDs for live controls.
+ - `tmux`: uses `tmux list-panes -a` when a tmux server is running.
+ 
+ The inventory database lives at:
+@@ -157,7 +161,7 @@ tss --db /path/to/sessions.db list
+ - fzf selection is optional with `tss search --fzf`; non-interactive search works without fzf.
+ - Summaries are local/extractive by default.
+ - Remote LLM summarization is intentionally not automatic and should remain explicit opt-in.
+-- `attach`, `open`, and `send` support `--print` so commands can be reviewed before execution.
++- `attach`, `open`, `send`, `read`, and `run` support `--print` so commands can be reviewed before execution.
+ 
+ ## Tessera Patch workflow
+ 
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index 61cfedf..f36ef20 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -112,6 +112,8 @@ Run the command directly:
+ tss attach <session-id>
+ tss open <session-id>
+ tss send <session-id> "please summarize your current blocker"
++tss read <session-id> --lines 120
++tss run <session-id> -- go test ./...
+ ```
+ 
+ Backend selection:
+@@ -121,6 +123,8 @@ tss attach <session-id> --backend herdr
+ tss attach <session-id> --backend tmux
+ tss open <session-id> --backend tmux
+ tss send <session-id> --backend herdr "status?"
++tss read <session-id> --backend tmux --print
++tss run <session-id> --backend herdr --print -- npm test
+ ```
+ 
+ Default backend order:
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 101cc4d..57e5ee3 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -76,8 +76,9 @@ Current slice:
+ Target:
+ 
+ - Better matching between historical sessions and live Herdr/tmux panes.
+-- Safer `send` and `run` behavior.
+-- `run <session> -- <command>` command.
++- Safer `send` and `run` behavior. Initial Herdr `agent prompt`, tmux `send-keys`, and `run` command generation are implemented.
++- `run <session> -- <command>` command. Initial Herdr/tmux implementation is added.
++- `read <session>` command for recent live output is added.
+ - Clear status mapping: `needs_attention`, `working`, `idle`, `done`, `stale`, `unknown`.
+ - Herdr-first behavior when installed, tmux fallback when not.
+ 
+diff --git a/internal/adapters/herdr.go b/internal/adapters/herdr.go
+index 0b15897..2c4114a 100644
+--- a/internal/adapters/herdr.go
++++ b/internal/adapters/herdr.go
+@@ -36,35 +36,39 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 	}
+ 	now := time.Now().UTC()
+ 	for _, item := range objectList(payload) {
+-		nativeID := firstString(item, "id", "agent_id", "pane_id", "terminal_id", "name")
+-		if nativeID == "" {
++		target, paneID := herdrTarget(item)
++		if target == "" {
+ 			continue
+ 		}
+-		cwd := firstString(item, "cwd", "project_path", "foreground_cwd")
+-		agent := firstString(item, "agent", "label", "name", "display_agent")
+-		status := normalizeStatus(firstString(item, "status", "state", "agent_state"))
++		cwd := firstString(item, "foreground_cwd", "cwd", "project_path", "workspace_cwd")
++		agent := firstNonEmpty(firstString(item, "agent", "kind", "agent_kind", "label", "display_agent"), "agent")
++		status := normalizeStatus(firstString(item, "status", "state", "agent_state", "lifecycle_state"))
+ 		if status == "" {
+ 			status = core.StatusUnknown
+ 		}
+-		title := firstString(item, "title", "name", "label")
++		title := firstString(item, "title", "display_title", "name", "label")
+ 		if title == "" {
+-			title = "Herdr: " + core.Truncate(nativeID, 32)
++			title = "Herdr: " + core.Truncate(target, 32)
+ 		}
+-		session := core.NewSession("herdr", nativeID)
++		session := core.NewSession("herdr", target)
+ 		session.ProjectPath = cwd
+-		session.Agent = firstNonEmpty(agent, "agent")
++		session.Agent = agent
+ 		session.Title = title
+ 		session.Status = status
+ 		session.LastActivityAt = now
+ 		session.CreatedAt = now
+-		session.AttachCommand = "herdr agent attach " + core.ShellQuote(nativeID)
++		session.AttachCommand = "herdr agent attach " + core.ShellQuote(target)
++		if ref := agentSessionRef(item); ref != "" {
++			session.ResumeCommand = resumeCommand(agent, ref)
++			session.RawPath = ref
++		}
+ 		result.Sessions = append(result.Sessions, session)
+ 		result.Runtimes = append(result.Runtimes, core.RuntimeInstance{
+-			ID:            core.RuntimeID("herdr", nativeID),
++			ID:            core.RuntimeID("herdr", target),
+ 			SessionID:     session.ID,
+ 			Backend:       "herdr",
+-			NativeID:      nativeID,
+-			Surface:       nativeID,
++			NativeID:      target,
++			Surface:       firstNonEmpty(paneID, target),
+ 			ProjectPath:   cwd,
+ 			Command:       agent,
+ 			Status:        status,
+@@ -80,9 +84,18 @@ func objectList(v any) []map[string]any {
+ 	case []any:
+ 		return mapsFromArray(x)
+ 	case map[string]any:
+-		for _, key := range []string{"agents", "items", "data", "results", "panes"} {
+-			if arr, ok := x[key].([]any); ok {
+-				return mapsFromArray(arr)
++		for _, key := range []string{"agents", "items", "data", "results", "panes", "workspaces", "tabs"} {
++			if nested, ok := x[key]; ok {
++				if list := objectList(nested); len(list) > 0 {
++					return list
++				}
++			}
++		}
++		for _, key := range []string{"result", "response"} {
++			if nested, ok := x[key]; ok {
++				if list := objectList(nested); len(list) > 0 {
++					return list
++				}
+ 			}
+ 		}
+ 		return []map[string]any{x}
+@@ -104,21 +117,67 @@ func mapsFromArray(arr []any) []map[string]any {
+ func firstString(m map[string]any, keys ...string) string {
+ 	for _, key := range keys {
+ 		if v, ok := m[key]; ok {
+-			switch t := v.(type) {
+-			case string:
+-				if strings.TrimSpace(t) != "" {
+-					return strings.TrimSpace(t)
+-				}
+-			case map[string]any:
+-				if s := firstString(t, "id", "name", "label", "path", "state", "status"); s != "" {
+-					return s
+-				}
++			if s := stringFromAny(v); s != "" {
++				return s
+ 			}
+ 		}
+ 	}
+ 	return ""
+ }
+ 
++func stringFromAny(v any) string {
++	switch t := v.(type) {
++	case string:
++		return strings.TrimSpace(t)
++	case map[string]any:
++		return firstString(t, "pane_id", "id", "name", "label", "path", "state", "status", "cwd")
++	default:
++		return ""
++	}
++}
++
++func herdrTarget(item map[string]any) (target, paneID string) {
++	paneID = firstString(item, "pane_id", "paneId", "public_pane_id")
++	target = firstString(item, "name", "agent_name", "agent_id")
++	if target == "" {
++		target = firstString(item, "id")
++	}
++	if target == "" {
++		target = paneID
++	}
++	if paneID == "" {
++		paneID = firstString(item, "terminal_id", "terminalId")
++	}
++	return target, paneID
++}
++
++func agentSessionRef(item map[string]any) string {
++	if ref := firstString(item, "agent_session_id", "session_id", "agent_session_path", "session_path"); ref != "" {
++		return ref
++	}
++	if nested, ok := item["agent_session"].(map[string]any); ok {
++		return firstString(nested, "id", "session_id", "path", "agent_session_path")
++	}
++	return ""
++}
++
++func resumeCommand(agent, ref string) string {
++	switch strings.ToLower(agent) {
++	case "claude", "claude code", "claude-code":
++		return "claude --resume " + core.ShellQuote(ref)
++	case "copilot", "github copilot cli":
++		return "copilot --resume=" + core.ShellQuote(ref)
++	case "hermes", "hermes agent":
++		return "hermes --resume " + core.ShellQuote(ref)
++	case "opencode":
++		return "opencode --session " + core.ShellQuote(ref)
++	case "codex":
++		return "codex resume " + core.ShellQuote(ref)
++	default:
++		return ""
++	}
++}
++
+ func normalizeStatus(status string) string {
+ 	switch strings.ToLower(strings.TrimSpace(status)) {
+ 	case "blocked", "waiting", "needs_attention", "needs-attention":
+diff --git a/internal/adapters/herdr_test.go b/internal/adapters/herdr_test.go
+new file mode 100644
+index 0000000..b106b07
+--- /dev/null
++++ b/internal/adapters/herdr_test.go
+@@ -0,0 +1,57 @@
++package adapters
++
++import (
++	"encoding/json"
++	"testing"
++)
++
++func TestObjectListReadsNestedResultAgents(t *testing.T) {
++	var payload any
++	data := []byte(`{
++		"result": {
++			"agents": [
++				{
++					"name": "auth-agent",
++					"pane_id": "w1:p1",
++					"kind": "claude",
++					"state": "blocked",
++					"foreground_cwd": "/repo",
++					"agent_session": {"id": "sess-1"}
++				}
++			]
++		}
++	}`)
++	if err := json.Unmarshal(data, &payload); err != nil {
++		t.Fatal(err)
++	}
++	items := objectList(payload)
++	if len(items) != 1 {
++		t.Fatalf("expected 1 item, got %d", len(items))
++	}
++	target, pane := herdrTarget(items[0])
++	if target != "auth-agent" {
++		t.Fatalf("target = %q, want auth-agent", target)
++	}
++	if pane != "w1:p1" {
++		t.Fatalf("pane = %q, want w1:p1", pane)
++	}
++	if got := normalizeStatus(firstString(items[0], "state")); got != "needs_attention" {
++		t.Fatalf("status = %q", got)
++	}
++	if got := agentSessionRef(items[0]); got != "sess-1" {
++		t.Fatalf("session ref = %q", got)
++	}
++}
++
++func TestResumeCommandForKnownAgents(t *testing.T) {
++	tests := map[string]string{
++		"claude":  "claude --resume 'abc'",
++		"copilot": "copilot --resume='abc'",
++		"hermes":  "hermes --resume 'abc'",
++	}
++	for agent, want := range tests {
++		if got := resumeCommand(agent, "abc"); got != want {
++			t.Fatalf("resumeCommand(%q) = %q, want %q", agent, got, want)
++		}
++	}
++}
+diff --git a/internal/cli/live_commands_test.go b/internal/cli/live_commands_test.go
+new file mode 100644
+index 0000000..055e43e
+--- /dev/null
++++ b/internal/cli/live_commands_test.go
+@@ -0,0 +1,50 @@
++package cli
++
++import (
++	"strings"
++	"testing"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++func TestSendCommandUsesHerdrPrompt(t *testing.T) {
++	got, err := sendCommand(core.RuntimeInstance{Backend: "herdr", NativeID: "agent-1"}, "continue")
++	if err != nil {
++		t.Fatal(err)
++	}
++	want := "herdr agent prompt 'agent-1' 'continue'"
++	if got != want {
++		t.Fatalf("got %q want %q", got, want)
++	}
++}
++
++func TestReadCommandTmux(t *testing.T) {
++	got, err := readCommand(core.RuntimeInstance{Backend: "tmux", NativeID: "%1"}, 40)
++	if err != nil {
++		t.Fatal(err)
++	}
++	want := "tmux capture-pane -p -t '%1' -S -40"
++	if got != want {
++		t.Fatalf("got %q want %q", got, want)
++	}
++}
++
++func TestRunCommandHerdrSplit(t *testing.T) {
++	got, err := runCommand(
++		core.RuntimeInstance{Backend: "herdr", NativeID: "agent-1", Surface: "w1:p1", ProjectPath: "/repo"},
++		core.Session{},
++		"go test ./...",
++	)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, want := range []string{
++		"herdr pane split 'w1:p1'",
++		"--cwd '/repo'",
++		"herdr pane run \"$pane\" 'go test ./...'",
++	} {
++		if !strings.Contains(got, want) {
++			t.Fatalf("command %q missing %q", got, want)
++		}
++	}
++}
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index 3beda17..800c245 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -71,6 +71,8 @@ func Execute() error {
+ 		app.attachCmd(),
+ 		app.openCmd(),
+ 		app.sendCmd(),
++		app.readCmd(),
++		app.runCmd(),
+ 	)
+ 	return root.Execute()
+ }
+@@ -609,6 +611,90 @@ func (a *appContext) sendCmd() *cobra.Command {
+ 	return cmd
+ }
+ 
++func (a *appContext) readCmd() *cobra.Command {
++	var printOnly bool
++	var backend string
++	var lines int
++	cmd := &cobra.Command{
++		Use:   "read <session>",
++		Short: "Read recent output from a live session",
++		Args:  cobra.ExactArgs(1),
++		RunE: func(cmd *cobra.Command, args []string) error {
++			cfg, err := a.load()
++			if err != nil {
++				return err
++			}
++			db, err := a.openStore(cfg)
++			if err != nil {
++				return err
++			}
++			defer db.Close() //nolint:errcheck
++			sess, err := db.GetSession(cmd.Context(), args[0])
++			if err != nil {
++				return friendlySessionErr(args[0], err)
++			}
++			rt, err := db.RuntimeForSession(cmd.Context(), sess.ID, firstNonEmpty(backend, cfg.Live.DefaultBackend))
++			if err != nil {
++				return fmt.Errorf("no live runtime found for %s; run tss scan while the session is open", sess.ID)
++			}
++			command, err := readCommand(rt, lines)
++			if err != nil {
++				return err
++			}
++			if printOnly {
++				fmt.Println(command)
++				return nil
++			}
++			return runInteractive(command)
++		},
++	}
++	cmd.Flags().IntVar(&lines, "lines", 80, "recent lines to read")
++	cmd.Flags().BoolVar(&printOnly, "print", false, "print command instead of running it")
++	cmd.Flags().StringVar(&backend, "backend", "", "prefer backend (herdr or tmux)")
++	return cmd
++}
++
++func (a *appContext) runCmd() *cobra.Command {
++	var printOnly bool
++	var backend string
++	cmd := &cobra.Command{
++		Use:   "run <session> -- <command>",
++		Short: "Run a command in a new live pane for the session directory",
++		Args:  cobra.MinimumNArgs(2),
++		RunE: func(cmd *cobra.Command, args []string) error {
++			cfg, err := a.load()
++			if err != nil {
++				return err
++			}
++			db, err := a.openStore(cfg)
++			if err != nil {
++				return err
++			}
++			defer db.Close() //nolint:errcheck
++			sess, err := db.GetSession(cmd.Context(), args[0])
++			if err != nil {
++				return friendlySessionErr(args[0], err)
++			}
++			rt, err := db.RuntimeForSession(cmd.Context(), sess.ID, firstNonEmpty(backend, cfg.Live.DefaultBackend))
++			if err != nil {
++				return fmt.Errorf("no live runtime found for %s; run tss scan while the session is open", sess.ID)
++			}
++			command, err := runCommand(rt, sess, strings.Join(args[1:], " "))
++			if err != nil {
++				return err
++			}
++			if printOnly {
++				fmt.Println(command)
++				return nil
++			}
++			return runInteractive(command)
++		},
++	}
++	cmd.Flags().BoolVar(&printOnly, "print", false, "print command instead of running it")
++	cmd.Flags().StringVar(&backend, "backend", "", "prefer backend (herdr or tmux)")
++	return cmd
++}
++
+ func (a *appContext) sessionForMutation(cmd *cobra.Command, ref string) (*store.Store, core.Session, error) {
+ 	cfg, err := a.load()
+ 	if err != nil {
+@@ -793,7 +879,7 @@ func openCommand(backend string, sess core.Session) string {
+ func sendCommand(rt core.RuntimeInstance, text string) (string, error) {
+ 	switch rt.Backend {
+ 	case "herdr":
+-		return "herdr agent send " + core.ShellQuote(rt.NativeID) + " " + core.ShellQuote(text), nil
++		return "herdr agent prompt " + core.ShellQuote(rt.NativeID) + " " + core.ShellQuote(text), nil
+ 	case "tmux":
+ 		return "tmux send-keys -t " + core.ShellQuote(rt.NativeID) + " " + core.ShellQuote(text) + " Enter", nil
+ 	default:
+@@ -801,6 +887,49 @@ func sendCommand(rt core.RuntimeInstance, text string) (string, error) {
+ 	}
+ }
+ 
++func readCommand(rt core.RuntimeInstance, lines int) (string, error) {
++	if lines <= 0 {
++		lines = 80
++	}
++	switch rt.Backend {
++	case "herdr":
++		return "herdr agent read " + core.ShellQuote(rt.NativeID) + " --source recent --lines " + fmt.Sprint(lines), nil
++	case "tmux":
++		return "tmux capture-pane -p -t " + core.ShellQuote(rt.NativeID) + " -S -" + fmt.Sprint(lines), nil
++	default:
++		return "", fmt.Errorf("backend %q cannot read output yet", rt.Backend)
++	}
++}
++
++func runCommand(rt core.RuntimeInstance, sess core.Session, command string) (string, error) {
++	command = strings.TrimSpace(command)
++	if command == "" {
++		return "", fmt.Errorf("command cannot be empty")
++	}
++	cwd := firstNonEmpty(rt.ProjectPath, sess.ProjectPath)
++	switch rt.Backend {
++	case "herdr":
++		pane := firstNonEmpty(rt.Surface, rt.NativeID)
++		if pane == "" {
++			return "", fmt.Errorf("herdr runtime has no pane target")
++		}
++		split := "herdr pane split " + core.ShellQuote(pane) + " --direction right --no-focus"
++		if cwd != "" {
++			split += " --cwd " + core.ShellQuote(cwd)
++		}
++		return "pane=$(" + split + " | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"result\"][\"pane\"][\"pane_id\"])')" +
++			" && herdr pane run \"$pane\" " + core.ShellQuote(command), nil
++	case "tmux":
++		args := "tmux split-window -h -t " + core.ShellQuote(rt.NativeID)
++		if cwd != "" {
++			args += " -c " + core.ShellQuote(cwd)
++		}
++		return args + " " + core.ShellQuote(command), nil
++	default:
++		return "", fmt.Errorf("backend %q cannot run commands yet", rt.Backend)
++	}
++}
++
+ func runInteractive(command string) error {
+ 	c := exec.Command("sh", "-lc", command)
+ 	c.Stdin = os.Stdin
