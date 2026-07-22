@@ -25,16 +25,29 @@ Out of scope for now:
 - Deep t3code parsing before the core adapters are stable.
 - Replacing Herdr, tmux, Agent Sessions, or AgentTrace.
 
-## Install for local development
+## Requirements
+
+- Go 1.26+
+- git
+- tmux (optional, for tmux live-session fallback)
+- Herdr (optional, preferred live-session backend)
+
+## Install from source
 
 ```sh
-go build -o bin/tss ./cmd/tss
+git clone https://github.com/jdbencardinop/tesserasessions.git
+cd tesserasessions
+make install
 ```
 
-Or run directly:
+For local development:
 
 ```sh
+make build        # writes bin/tss with git-derived version metadata
+make test         # runs go test ./...
+make lint         # gofmt check + go vet
 go run ./cmd/tss --help
+bin/tss --version
 ```
 
 ## Quick start
@@ -176,3 +189,7 @@ Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [doc
 
 - [Cheatsheet](docs/cheatsheet.md)
 - [Roadmap](docs/roadmap.md)
+
+## License
+
+[MIT](LICENSE)

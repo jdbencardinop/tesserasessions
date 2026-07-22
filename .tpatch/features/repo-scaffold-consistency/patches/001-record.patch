@@ -1,0 +1,328 @@
+diff --git a/.gitignore b/.gitignore
+index 2e4217b..ac169ed 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,8 +1,36 @@
++# Derived from github/gitignore/Go.gitignore + project-specific rules.
++# https://github.com/github/gitignore/blob/main/Go.gitignore
++
++# Binaries for programs and plugins
++*.exe
++*.exe~
++*.dll
++*.so
++*.dylib
++
++# Test binary, built with `go test -c`
++*.test
++
++# Code coverage profiles and other test artifacts
++*.out
++coverage.*
++*.coverprofile
++profile.cov
++
++# Go workspace file
++go.work
++go.work.sum
++
++# env file
++.env
++
+ # Local scratch and retrospective notes
+ .gitignored/
+ 
+-# Build outputs
+-bin/
++# Local build artifacts (Makefile writes here; see `make build`).
++/bin/
++
++# Root-level binary produced by `go build ./cmd/tss` (no -o flag).
+ /tss
+ 
+ # Local databases and generated runtime state
+@@ -12,5 +40,11 @@ bin/
+ 
+ # OS/editor noise
+ .DS_Store
++Thumbs.db
++
++# IDE
++.idea/
++.vscode/
+ *.swp
++*.swo
+ *.tmp
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+new file mode 100644
+index 0000000..bb8c8de
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,10 @@
++# Changelog
++
++All notable changes to `tesserasessions` will be documented in this file.
++
++## Unreleased
++
++- Bootstrap `tss`, a local-first CLI for inventorying coding-agent sessions.
++- Add SQLite inventory storage, Claude/Copilot scanners, tmux/Herdr live scaffolding, local summaries, search, and manual session curation.
++- Add tpatch-tracked roadmap metadata and project documentation.
++
+diff --git a/LICENSE b/LICENSE
+new file mode 100644
+index 0000000..edcc5f1
+--- /dev/null
++++ b/LICENSE
+@@ -0,0 +1,22 @@
++MIT License
++
++Copyright (c) 2026 jdbencardinop
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
++
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..27abe9b
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,37 @@
++.PHONY: build test fmt install clean lint all
++
++BINARY=bin/tss
++BUILD_DIR=./cmd/tss
++
++# Resolve a version string for ldflags injection. Falls back to "dev"
++# when not in a git checkout or before the first tag.
++VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
++LDFLAGS = -ldflags "-X github.com/jdbencardinop/tesserasessions/internal/buildinfo.Version=$(VERSION)"
++
++build:
++	@mkdir -p bin
++	go build $(LDFLAGS) -o $(BINARY) $(BUILD_DIR)
++
++test:
++	go test ./...
++
++fmt:
++	gofmt -w .
++
++lint:
++	@unformatted=$$(gofmt -l .); \
++	if [ -n "$$unformatted" ]; then \
++		echo "Unformatted files:"; \
++		echo "$$unformatted"; \
++		exit 1; \
++	fi
++	go vet ./...
++
++install:
++	go install $(LDFLAGS) $(BUILD_DIR)
++
++clean:
++	rm -rf bin/
++
++all: fmt lint test build
++
+diff --git a/README.md b/README.md
+index 72047e7..27887a0 100644
+--- a/README.md
++++ b/README.md
+@@ -25,16 +25,29 @@ Out of scope for now:
+ - Deep t3code parsing before the core adapters are stable.
+ - Replacing Herdr, tmux, Agent Sessions, or AgentTrace.
+ 
+-## Install for local development
++## Requirements
++
++- Go 1.26+
++- git
++- tmux (optional, for tmux live-session fallback)
++- Herdr (optional, preferred live-session backend)
++
++## Install from source
+ 
+ ```sh
+-go build -o bin/tss ./cmd/tss
++git clone https://github.com/jdbencardinop/tesserasessions.git
++cd tesserasessions
++make install
+ ```
+ 
+-Or run directly:
++For local development:
+ 
+ ```sh
++make build        # writes bin/tss with git-derived version metadata
++make test         # runs go test ./...
++make lint         # gofmt check + go vet
+ go run ./cmd/tss --help
++bin/tss --version
+ ```
+ 
+ ## Quick start
+@@ -176,3 +189,7 @@ Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [doc
+ 
+ - [Cheatsheet](docs/cheatsheet.md)
+ - [Roadmap](docs/roadmap.md)
++
++## License
++
++[MIT](LICENSE)
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index a74186c..61cfedf 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -198,6 +198,10 @@ Feature files live under:
+ ## Development checks
+ 
+ ```sh
++make test
++make build
++make lint
+ go test ./...
+ go build -o bin/tss ./cmd/tss
++bin/tss --version
+ ```
+diff --git a/internal/buildinfo/buildinfo.go b/internal/buildinfo/buildinfo.go
+new file mode 100644
+index 0000000..8a32607
+--- /dev/null
++++ b/internal/buildinfo/buildinfo.go
+@@ -0,0 +1,38 @@
++// Package buildinfo exposes the resolved tss version string.
++//
++// Resolution order:
++//
++//  1. ldflags-injected value from the Makefile:
++//
++//     -ldflags "-X github.com/jdbencardinop/tesserasessions/internal/buildinfo.Version=v0.1.0"
++//
++//  2. runtime/debug.ReadBuildInfo(), populated by module-aware installs.
++//
++//  3. The literal "dev" for local go run/go build workflows.
++package buildinfo
++
++import "runtime/debug"
++
++// Version is overridden by linker flags in Makefile builds.
++var Version = "dev"
++
++// String returns the best available version.
++func String() string {
++	return resolve(Version, debug.ReadBuildInfo)
++}
++
++func resolve(injected string, readInfo func() (*debug.BuildInfo, bool)) string {
++	if injected != "" && injected != "dev" {
++		return injected
++	}
++	if info, ok := readInfo(); ok {
++		v := info.Main.Version
++		if v != "" && v != "(devel)" {
++			return v
++		}
++	}
++	if injected == "" {
++		return "dev"
++	}
++	return injected
++}
+diff --git a/internal/buildinfo/buildinfo_test.go b/internal/buildinfo/buildinfo_test.go
+new file mode 100644
+index 0000000..7b3438f
+--- /dev/null
++++ b/internal/buildinfo/buildinfo_test.go
+@@ -0,0 +1,48 @@
++package buildinfo
++
++import (
++	"runtime/debug"
++	"testing"
++)
++
++func TestResolvePrefersInjectedVersion(t *testing.T) {
++	got := resolve("v1.2.3", func() (*debug.BuildInfo, bool) {
++		return &debug.BuildInfo{Main: debug.Module{Version: "v9.9.9"}}, true
++	})
++	if got != "v1.2.3" {
++		t.Fatalf("expected injected version to win, got %q", got)
++	}
++}
++
++func TestResolveUsesModuleVersionWhenInjectedIsDev(t *testing.T) {
++	got := resolve("dev", func() (*debug.BuildInfo, bool) {
++		return &debug.BuildInfo{Main: debug.Module{Version: "v0.1.0"}}, true
++	})
++	if got != "v0.1.0" {
++		t.Fatalf("expected module version, got %q", got)
++	}
++}
++
++func TestResolveKeepsDevForDevelBuild(t *testing.T) {
++	got := resolve("dev", func() (*debug.BuildInfo, bool) {
++		return &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, true
++	})
++	if got != "dev" {
++		t.Fatalf("expected dev fallback, got %q", got)
++	}
++}
++
++func TestResolveKeepsDevWithoutBuildInfo(t *testing.T) {
++	got := resolve("dev", func() (*debug.BuildInfo, bool) {
++		return nil, false
++	})
++	if got != "dev" {
++		t.Fatalf("expected dev fallback, got %q", got)
++	}
++}
++
++func TestStringDoesNotPanic(t *testing.T) {
++	if got := String(); got == "" {
++		t.Fatal("String returned empty")
++	}
++}
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index e4da2c6..3beda17 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -13,6 +13,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/jdbencardinop/tesserasessions/internal/adapters"
++	"github.com/jdbencardinop/tesserasessions/internal/buildinfo"
+ 	"github.com/jdbencardinop/tesserasessions/internal/config"
+ 	"github.com/jdbencardinop/tesserasessions/internal/core"
+ 	"github.com/jdbencardinop/tesserasessions/internal/store"
+@@ -48,10 +49,12 @@ func mergeSessions(primary, secondary []core.Session) []core.Session {
+ func Execute() error {
+ 	app := &appContext{}
+ 	root := &cobra.Command{
+-		Use:   "tss",
+-		Short: "Inventory local coding-agent sessions",
+-		Long:  "tss inventories local coding-agent sessions and connects them to Herdr or tmux when available.",
++		Use:     "tss",
++		Short:   "Inventory local coding-agent sessions",
++		Long:    "tss inventories local coding-agent sessions and connects them to Herdr or tmux when available.",
++		Version: buildinfo.String(),
+ 	}
++	root.SetVersionTemplate("tss {{.Version}}\n")
+ 	root.PersistentFlags().StringVar(&app.configPath, "config", "", "config file path")
+ 	root.PersistentFlags().StringVar(&app.dbPath, "db", "", "SQLite database path")
+ 	root.AddCommand(

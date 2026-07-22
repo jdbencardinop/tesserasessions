@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jdbencardinop/tesserasessions/internal/adapters"
+	"github.com/jdbencardinop/tesserasessions/internal/buildinfo"
 	"github.com/jdbencardinop/tesserasessions/internal/config"
 	"github.com/jdbencardinop/tesserasessions/internal/core"
 	"github.com/jdbencardinop/tesserasessions/internal/store"
@@ -48,10 +49,12 @@ func mergeSessions(primary, secondary []core.Session) []core.Session {
 func Execute() error {
 	app := &appContext{}
 	root := &cobra.Command{
-		Use:   "tss",
-		Short: "Inventory local coding-agent sessions",
-		Long:  "tss inventories local coding-agent sessions and connects them to Herdr or tmux when available.",
+		Use:     "tss",
+		Short:   "Inventory local coding-agent sessions",
+		Long:    "tss inventories local coding-agent sessions and connects them to Herdr or tmux when available.",
+		Version: buildinfo.String(),
 	}
+	root.SetVersionTemplate("tss {{.Version}}\n")
 	root.PersistentFlags().StringVar(&app.configPath, "config", "", "config file path")
 	root.PersistentFlags().StringVar(&app.dbPath, "db", "", "SQLite database path")
 	root.AddCommand(

@@ -1,8 +1,36 @@
+# Derived from github/gitignore/Go.gitignore + project-specific rules.
+# https://github.com/github/gitignore/blob/main/Go.gitignore
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
 # Local scratch and retrospective notes
 .gitignored/
 
-# Build outputs
-bin/
+# Local build artifacts (Makefile writes here; see `make build`).
+/bin/
+
+# Root-level binary produced by `go build ./cmd/tss` (no -o flag).
 /tss
 
 # Local databases and generated runtime state
@@ -12,5 +40,11 @@ bin/
 
 # OS/editor noise
 .DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
 *.swp
+*.swo
 *.tmp

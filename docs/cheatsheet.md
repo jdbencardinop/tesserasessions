@@ -198,6 +198,10 @@ Feature files live under:
 ## Development checks
 
 ```sh
+make test
+make build
+make lint
 go test ./...
 go build -o bin/tss ./cmd/tss
+bin/tss --version
 ```

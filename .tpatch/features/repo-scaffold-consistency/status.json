@@ -1,0 +1,32 @@
+{
+  "id": "repo-scaffold-consistency",
+  "slug": "repo-scaffold-consistency",
+  "title": "Align the tesserasessions repository scaffold with sibling Tessera Go CLIs. Compare tesserapatch/tpatch and tesseraspaces/tesseraworkspaces conventions for Makefile targets, version injection, buildinfo handling, README sections, LICENSE, .gitignore, changelog/docs files, completions, and install-from-source workflow; then add the missing project files and CLI version wiring for a consistent developer experience.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-07-10T06:12:38Z",
+  "updated_at": "2026-07-22T14:30:30Z",
+  "last_command": "verify",
+  "notes": "Patch recorded",
+  "apply": {
+    "completed_at": "2026-07-22T14:30:24Z",
+    "base_commit": "bcf14a010922fee6b8ca2f7c43e025d3ec5ddb1d",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "depends_on": [
+    {
+      "slug": "cli-inventory-core",
+      "kind": "hard"
+    }
+  ],
+  "verify": {
+    "verified_at": "2026-07-22T14:30:30Z",
+    "passed": false,
+    "recipe_hash_at_verify": "ec18ef208168e9747792b064a5d51d71b423364c1d6b3f3f14b8df61e1fb3fea",
+    "patch_hash_at_verify": "c5932c4b0f523530c42c9e22af4da6da29f5e737d10196f0197f14d8fa4b59fb",
+    "parent_snapshot": {
+      "cli-inventory-core": "applied"
+    }
+  }
+}

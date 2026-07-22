@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "feature": "repo-scaffold-consistency",
+  "current_generation": 1,
+  "generations": [
+    {
+      "generation": 1,
+      "generation_id": "pg_1f69f1a2259d",
+      "kind": "record",
+      "patch_sha256": "c5932c4b0f523530c42c9e22af4da6da29f5e737d10196f0197f14d8fa4b59fb",
+      "git_patch_id": "86bc0686c74081dc4381a0e1a521eadac68ad25b",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "ec18ef208168e9747792b064a5d51d71b423364c1d6b3f3f14b8df61e1fb3fea",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "patches/001-record.patch",
+      "base_commit": "bcf14a010922fee6b8ca2f7c43e025d3ec5ddb1d",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [
+          ".gitignore",
+          "CHANGELOG.md",
+          "LICENSE",
+          "Makefile",
+          "README.md",
+          "docs/cheatsheet.md",
+          "internal/buildinfo/",
+          "internal/cli/root.go"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        ".gitignore",
+        "CHANGELOG.md",
+        "LICENSE",
+        "Makefile",
+        "README.md",
+        "docs/cheatsheet.md",
+        "internal/buildinfo/buildinfo.go",
+        "internal/buildinfo/buildinfo_test.go",
+        "internal/cli/root.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    }
+  ]
+}

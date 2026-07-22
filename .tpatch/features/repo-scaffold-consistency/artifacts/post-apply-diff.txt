@@ -1,0 +1,5 @@
+ .gitignore           | 38 ++++++++++++++++++++++++++++++++++++--
+ README.md            | 23 ++++++++++++++++++++---
+ docs/cheatsheet.md   |  4 ++++
+ internal/cli/root.go |  9 ++++++---
+ 4 files changed, 66 insertions(+), 8 deletions(-)
