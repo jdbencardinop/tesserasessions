@@ -185,13 +185,54 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
 }
 
 func (s *Store) UpsertRuntime(ctx context.Context, rt core.RuntimeInstance) error {
-	if rt.UpdatedAt.IsZero() {
-		rt.UpdatedAt = time.Now().UTC()
+	rt = normalizeRuntime(rt)
+	if strings.TrimSpace(rt.Backend) == "" {
+		return fmt.Errorf("runtime backend is required")
 	}
-	if rt.Status == "" {
-		rt.Status = core.StatusUnknown
+	return upsertRuntime(ctx, s.db, rt)
+}
+
+// ReplaceRuntimes atomically replaces one backend's complete live snapshot.
+// Callers must only use it after an authoritative provider scan succeeds.
+func (s *Store) ReplaceRuntimes(ctx context.Context, backend string, runtimes []core.RuntimeInstance) error {
+	backend = strings.TrimSpace(backend)
+	if backend == "" {
+		return fmt.Errorf("runtime backend is required")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO runtime_instances
+	normalized := make([]core.RuntimeInstance, len(runtimes))
+	for index, runtime := range runtimes {
+		if runtime.Backend == "" {
+			runtime.Backend = backend
+		}
+		if runtime.Backend != backend {
+			return fmt.Errorf("runtime backend %q does not match snapshot backend %q", runtime.Backend, backend)
+		}
+		normalized[index] = normalizeRuntime(runtime)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_instances WHERE backend = ?`, backend); err != nil {
+		return err
+	}
+	for _, runtime := range normalized {
+		if err := upsertRuntime(ctx, tx, runtime); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+type runtimeExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func upsertRuntime(ctx context.Context, executor runtimeExecer, rt core.RuntimeInstance) error {
+	_, err := executor.ExecContext(ctx, `INSERT INTO runtime_instances
 		(id, session_id, backend, native_id, surface, project_path, command, status, attach_command, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(backend, native_id) DO UPDATE SET
@@ -205,6 +246,16 @@ func (s *Store) UpsertRuntime(ctx context.Context, rt core.RuntimeInstance) erro
 		rt.ID, rt.SessionID, rt.Backend, rt.NativeID, rt.Surface, rt.ProjectPath, rt.Command,
 		rt.Status, rt.AttachCommand, encodeTime(rt.UpdatedAt))
 	return err
+}
+
+func normalizeRuntime(rt core.RuntimeInstance) core.RuntimeInstance {
+	if rt.UpdatedAt.IsZero() {
+		rt.UpdatedAt = time.Now().UTC()
+	}
+	if rt.Status == "" {
+		rt.Status = core.StatusUnknown
+	}
+	return rt
 }
 
 func (s *Store) ListSessions(ctx context.Context, filter Filter) ([]core.Session, error) {

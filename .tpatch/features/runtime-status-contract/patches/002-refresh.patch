@@ -1,0 +1,1973 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index bb8c8de..e12b795 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,5 +6,8 @@ All notable changes to `tesserasessions` will be documented in this file.
+ 
+ - Bootstrap `tss`, a local-first CLI for inventorying coding-agent sessions.
+ - Add SQLite inventory storage, Claude/Copilot scanners, tmux/Herdr live scaffolding, local summaries, search, and manual session curation.
++- Add the side-effect-free `tss status --json` batch runtime provider contract
++  with explicit freshness, match evidence, raw observations, and separate
++  runtime-presence and agent-state aggregates.
++- Reconcile persisted Herdr/tmux runtime snapshots after successful scans.
+ - Add tpatch-tracked roadmap metadata and project documentation.
+-
+diff --git a/README.md b/README.md
+index fcb1950..d0e44dd 100644
+--- a/README.md
++++ b/README.md
+@@ -59,6 +59,10 @@ go run ./cmd/tss doctor
+ # Scan all known sources.
+ go run ./cmd/tss scan
+ 
++# Query live runtime status without mutating the inventory.
++printf '%s\n' '{"schema_version":1,"queries":[{"query_id":"repo","path":"'"$PWD"'"}]}' |
++  go run ./cmd/tss status --json
++
+ # List recent sessions.
+ go run ./cmd/tss list
+ 
+@@ -86,6 +90,7 @@ tss show claude-abc123
+ | --- | --- |
+ | `tss doctor` | Show config paths, source health, backend availability, and inventory count. |
+ | `tss scan` | Refresh the local inventory from configured sources. |
++| `tss status --json` | Answer a side-effect-free batch query for live runtime presence and agent state. |
+ | `tss list` / `tss ls` | List indexed sessions with filters. |
+ | `tss show <session>` | Show metadata, paths, summary, and resume/attach commands. |
+ | `tss summarize <session>` | Generate a local/extractive title and goal summary. |
+@@ -104,6 +109,7 @@ Useful flags:
+ 
+ ```sh
+ tss scan --source claude
++printf '%s\n' '{"schema_version":1,"queries":[{"query_id":"repo","path":"/absolute/repo"}]}' | tss status --json
+ tss list --source copilot --limit 10
+ tss list --query tesseraspaces
+ tss list --status needs_attention
+@@ -125,6 +131,12 @@ tss --db /tmp/tss.db scan
+ ## How it works
+ 
+ `tss scan` runs source adapters and stores normalized records in SQLite.
++Successful live-adapter scans atomically replace that backend's runtime
++snapshot; failed or unavailable adapters preserve prior rows.
++
++`tss status --json` is separate from scanning. It performs bounded Herdr/tmux
++probes in memory, reads a versioned batch request from stdin, and writes the
++versioned response to stdout without opening or mutating the inventory.
+ 
+ Initial adapters:
+ 
+@@ -156,6 +168,7 @@ tss --db /path/to/sessions.db list
+ ## Privacy and safety
+ 
+ - Scanners are read-only against agent session stores.
++- `tss status --json` has no inventory, attach, focus, or agent-input side effects.
+ - Transcript parsing is lazy and only used where needed, such as `summarize`.
+ - Content search is opt-in with `tss search --content`.
+ - fzf selection is optional with `tss search --fzf`; non-interactive search works without fzf.
+@@ -167,17 +180,22 @@ tss --db /path/to/sessions.db list
+ 
+ This repo uses `tpatch` to track feature work.
+ 
++This repo uses tpatch Path B: the coding agent authors phase artifacts directly
++and advances them with `--manual`; the configured tpatch AI provider is not
++used.
++
+ Common commands:
+ 
+ ```sh
+ tpatch status --dag
+ tpatch next <feature-slug>
+-tpatch analyze <feature-slug>
+-tpatch define <feature-slug>
+-tpatch explore <feature-slug>
+-tpatch implement <feature-slug>
+-tpatch apply <feature-slug>
++tpatch analyze <feature-slug> --manual
++tpatch define <feature-slug> --manual
++tpatch explore <feature-slug> --manual
++tpatch apply <feature-slug> --mode started
++# Implement and validate directly.
+ tpatch test <feature-slug>
++tpatch apply <feature-slug> --mode done
+ tpatch record <feature-slug>
+ ```
+ 
+@@ -193,6 +211,7 @@ Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [doc
+ 
+ - [Cheatsheet](docs/cheatsheet.md)
+ - [Roadmap](docs/roadmap.md)
++- [Runtime status contract](docs/runtime-status-contract.md)
+ 
+ ## License
+ 
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index f36ef20..87dd395 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -65,6 +65,36 @@ tss scan --source tmux
+ tss scan --json
+ ```
+ 
++Successful Herdr/tmux scans replace that backend's stored runtime snapshot.
++Unavailable providers do not erase prior rows.
++
++## Query live runtime status
++
++```sh
++printf '%s\n' '{
++  "schema_version": 1,
++  "queries": [
++    {
++      "query_id": "auth/models",
++      "path": "/absolute/worktrees/auth-models",
++      "repo_root": "/absolute/repos/app",
++      "git_branch": "feature/auth-models"
++    }
++  ]
++}' | tss status --json
++```
++
++Useful controls:
++
++```sh
++tss status --json --timeout 2s --fresh-for 10s < request.json
++```
++
++This command probes live providers without running `scan` or writing the
++database. The response separates `runtime_presence` from `agent_state` and
++includes raw observations, freshness, match evidence, provider availability,
++and per-query errors.
++
+ ## Summarize locally
+ 
+ ```sh
+@@ -174,15 +204,16 @@ tpatch status <feature-slug>
+ tpatch next <feature-slug>
+ ```
+ 
+-Normal lifecycle:
++Path B lifecycle:
+ 
+ ```sh
+-tpatch analyze <feature-slug>
+-tpatch define <feature-slug>
+-tpatch explore <feature-slug>
+-tpatch implement <feature-slug>
+-tpatch apply <feature-slug>
++tpatch analyze <feature-slug> --manual
++tpatch define <feature-slug> --manual
++tpatch explore <feature-slug> --manual
++tpatch apply <feature-slug> --mode started
++# Implement directly; do not call the configured tpatch AI provider.
+ tpatch test <feature-slug>
++tpatch apply <feature-slug> --mode done
+ tpatch record <feature-slug>
+ ```
+ 
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 57e5ee3..97a825c 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -27,21 +27,49 @@ go test ./...
+ 
+ ```text
+ cli-inventory-core
+-|-- agent-source-expansion       (hard)
+ |-- docs-guide-cheatsheet        (soft)
+ |-- live-herdr-tmux-control      (hard)
++|   `-- runtime-status-contract  (hard)
++|       `-- agent-source-expansion (soft ordering)
+ |-- smart-session-summaries      (hard)
+ `-- session-ux-roadmap           (hard)
+     `-- smart-session-summaries  (soft ordering hint)
+ ```
+ 
++`runtime-status-contract` also depends directly on `cli-inventory-core`.
++`agent-source-expansion` keeps its existing hard dependency on the core.
++
++## Delivered - runtime status contract
++
++The side-effect-free, versioned status-provider contract for orchestrators such
++as `tws` is implemented and verified. It does not replace the consumer's
++topology, health, or rollup authority.
++
++Cross-repository work is intentionally split:
++
++1. `tws` implements `agent-work-status-dashboard` from its existing local
++   signals without waiting for `tss`. Shipped in `tws` v1.2.12.
++2. `tss` implements `runtime-status-contract`. Delivered.
++3. `tws` later adds an optional `tss-status-enrichment` child feature with
++   timeout/schema guards and baseline fallback.
++
++See [Runtime status provider contract](runtime-status-contract.md).
++
++## Next - agent source expansion
++
++The next local feature is `agent-source-expansion`, beginning with Hermes Agent
++and retaining the metadata-first, read-only parser boundary. Its hard core
++dependency is applied and its soft ordering dependency on
++`runtime-status-contract` is now satisfied.
++
+ ## Tracked features
+ 
+ | Slug | Phase | Goal | Notes |
+ | --- | --- | --- | --- |
+ | `cli-inventory-core` | MVP foundation | Standalone Go CLI, SQLite inventory, Claude/Copilot scans, Herdr/tmux scaffolding, and basic commands. | Initial implementation exists; tpatch was adopted after the first slice, so record this feature before a real commit/landing flow. |
+ | `docs-guide-cheatsheet` | Docs slice | README, cheatsheet, scope, architecture, command examples, and tpatch workflow docs. | Depends softly on the core because docs can evolve while core changes. |
+-| `live-herdr-tmux-control` | Next live-control hardening | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Herdr remains preferred; tmux remains fallback. |
++| `live-herdr-tmux-control` | Live-control foundation | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Applied; Herdr remains preferred and tmux remains fallback. |
++| `runtime-status-contract` | Status provider | Publish a side-effect-free batch JSON provider with freshness, match evidence, raw runtimes, and separate presence/agent-state aggregates. | Applied and verified; does not own the `tws` rollup and never guesses cwd-less sessions. |
+ | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
+ | `agent-source-expansion` | Adapter expansion | Add Hermes Agent first, then t3code once the core data model is stable. | Parsers should stay read-only and metadata-first. |
+ | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
+@@ -82,7 +110,23 @@ Target:
+ - Clear status mapping: `needs_attention`, `working`, `idle`, `done`, `stale`, `unknown`.
+ - Herdr-first behavior when installed, tmux fallback when not.
+ 
+-### M3 - Summary quality
++### M3 - Runtime status provider contract
++
++Delivered:
++
++- Versioned batch request/response JSON on stdin/stdout.
++- Side-effect-free live probes with no implicit scan.
++- Opaque query IDs plus verified path and optional Git hints.
++- Separate `runtime_presence` and `agent_state`.
++- Provider availability, observation timestamps, expiry, and per-query errors.
++- Raw runtime observations plus deterministic aggregation.
++- Explicitly unmatched cwd-less sessions.
++- Runtime-row reconciliation during explicit scans.
++
++The feature is unblocked: both hard dependencies, `cli-inventory-core` and
++`live-herdr-tmux-control`, are applied.
++
++### M4 - Summary quality
+ 
+ Target:
+ 
+@@ -92,7 +136,7 @@ Target:
+ - Confidence scoring based on source quality.
+ - Explicit opt-in remote summarizer command.
+ 
+-### M4 - More source adapters
++### M5 - More source adapters
+ 
+ Target:
+ 
+@@ -101,7 +145,7 @@ Target:
+ - Optional Codex/OpenCode adapter if local stores are present.
+ - Parser fixtures using redacted or synthetic data.
+ 
+-### M5 - Operator UX
++### M6 - Operator UX
+ 
+ Target:
+ 
+@@ -117,6 +161,9 @@ Target:
+ - Local first: no telemetry, no hosted database.
+ - Metadata first: avoid transcript parsing unless requested.
+ - Read-only source scans: do not mutate agent stores.
++- Status-provider queries are side-effect-free and never imply a scan.
++- External consumers use versioned JSON, never SQLite or Go imports.
++- Consumers retain topology, local-health, and final-rollup authority.
+ - Herdr first for live state; tmux fallback for portability.
+ - Explicit execution: support `--print` on potentially interactive commands.
+ - tpatch tracked: every roadmap slice should have a feature slug before implementation.
+diff --git a/docs/runtime-status-contract.md b/docs/runtime-status-contract.md
+new file mode 100644
+index 0000000..a787007
+--- /dev/null
++++ b/docs/runtime-status-contract.md
+@@ -0,0 +1,156 @@
++# Runtime status provider contract
++
++This document coordinates `tesserasessions` (`tss`) with consumers such as
++`tesseraworkspaces` (`tws`).
++
++## Ownership
++
++`tws` owns:
++
++- workspace, feature, branch, and worktree topology;
++- sessions that `tws` launches;
++- direct-process and tmux liveness for those sessions;
++- locks, stale state, failed stages, and final dashboard rollup.
++
++`tss` owns:
++
++- cross-agent runtime observation;
++- semantic agent state such as working, ready, blocked, or done;
++- externally launched runtimes visible through Herdr, tmux, or later adapters.
++
++The integration is an optional CLI JSON contract. Consumers must not read the
++`tss` SQLite database or import `tss` Go packages.
++
++## Rollout
++
++The work proceeds in parallel:
++
++1. `tws/agent-work-status-dashboard`
++   - shipped in `tws` v1.2.12;
++   - reports topology, runtime presence, attention rollups, direct/tmux
++     sessions, sync failures, and stale state without `tss` coupling;
++   - external direct sessions without durable evidence remain `unknown`.
++2. `tss/runtime-status-contract`
++   - implemented and verified;
++   - exposes `tss status --json` with bounded live probes and schema v1.
++3. `tws/tss-status-enrichment`
++   - later optional child feature;
++   - invoke `tss` with a timeout and schema guard;
++   - retain the baseline result when `tss` is unavailable.
++
++## Planned request
++
++```json
++{
++  "schema_version": 1,
++  "queries": [
++    {
++      "query_id": "auth/models",
++      "path": "/workspaces/auth/models",
++      "repo_root": "/repos/app",
++      "git_branch": "feature/auth-models",
++      "metadata": {
++        "workspace_id": "ws-123"
++      }
++    }
++  ]
++}
++```
++
++`query_id` is the consumer's opaque correlation key. Path is evidence, not
++identity. Git hints distinguish checkout branches that share one physical
++repository path.
++
++## Planned response
++
++```json
++{
++  "schema_version": 1,
++  "observed_at": "2026-08-11T08:00:00Z",
++  "fresh_until": "2026-08-11T08:00:10Z",
++  "providers": [
++    {
++      "name": "herdr",
++      "available": true,
++      "observed_at": "2026-08-11T08:00:00Z",
++      "fresh_until": "2026-08-11T08:00:10Z"
++    },
++    {
++      "name": "tmux",
++      "available": true,
++      "observed_at": "2026-08-11T08:00:00Z",
++      "fresh_until": "2026-08-11T08:00:10Z"
++    }
++  ],
++  "results": [
++    {
++      "query_id": "auth/models",
++      "metadata": {
++        "workspace_id": "ws-123"
++      },
++      "runtime_presence": "present",
++      "agent_state": "blocked",
++      "match": {
++        "type": "repo_branch",
++        "matched_path": "/workspaces/auth/models"
++      },
++      "runtimes": [
++        {
++          "observation_id": "herdr:w1:p2",
++          "backend": "herdr",
++          "native_id": "w1:p2",
++          "path": "/workspaces/auth/models",
++          "repo_root": "/repos/app",
++          "git_branch": "feature/auth-models",
++          "runtime_presence": "present",
++          "agent_state": "blocked",
++          "observed_at": "2026-08-11T08:00:00Z",
++          "expires_at": "2026-08-11T08:00:10Z"
++        }
++      ],
++      "errors": []
++    }
++  ]
++}
++```
++
++Schema v1 is implemented by `tss status --json`. Additive fields may be
++introduced compatibly; breaking field or enum changes require a new schema
++version.
++
++## Side effects and freshness
++
++The status command:
++
++- does not run `tss scan`;
++- does not write the inventory database;
++- does not send input or focus/attach to an agent;
++- performs bounded live probes in memory;
++- returns timestamps, expiry, provider coverage, and per-query errors.
++
++Explicit `tss scan` remains responsible for persisted inventory. Successful
++runtime scans must reconcile disappeared rows; failed provider scans must not
++erase prior evidence.
++
++## Matching
++
++- Canonicalize absolute paths and resolve symlinks where possible.
++- Treat nested foreground working directories as descendant matches.
++- Assign a runtime to the deepest matching query path.
++- Use repository and branch hints when physical paths are shared.
++- Return match evidence.
++- Leave cwd-less or unverifiable sessions unmatched.
++
++## Consumer rollup
++
++`tws` keeps final authority:
++
++```text
++needs_attention: local failure/stale state OR tss blocked/stale
++active:          tws-owned live session OR tss runtime present
++idle:            neither condition above
++```
++
++`runtime_presence` and `agent_state` remain separate. In particular, `ready`
++means a live agent can accept input; it is not the dashboard's no-session
++`idle`.
+diff --git a/internal/adapters/herdr.go b/internal/adapters/herdr.go
+index 2c4114a..780425d 100644
+--- a/internal/adapters/herdr.go
++++ b/internal/adapters/herdr.go
+@@ -25,6 +25,10 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 	}
+ 	out, err := exec.CommandContext(ctx, "herdr", "agent", "list", "--json").Output()
+ 	if err != nil {
++		if ctx.Err() != nil {
++			result.Err = ctx.Err()
++			return result
++		}
+ 		result.Skipped = true
+ 		result.Message = "herdr agent list unavailable; is the server running?"
+ 		return result
+@@ -34,6 +38,7 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 		result.Err = err
+ 		return result
+ 	}
++	result.SnapshotComplete = true
+ 	now := time.Now().UTC()
+ 	for _, item := range objectList(payload) {
+ 		target, paneID := herdrTarget(item)
+diff --git a/internal/adapters/scanner.go b/internal/adapters/scanner.go
+index 2e08e20..68ef893 100644
+--- a/internal/adapters/scanner.go
++++ b/internal/adapters/scanner.go
+@@ -13,9 +13,15 @@ type Scanner interface {
+ }
+ 
+ func DefaultScanners(cfg config.Config) []Scanner {
+-	return []Scanner{
++	scanners := []Scanner{
+ 		ClaudeScanner{Root: cfg.Sources.ClaudeProjects},
+ 		CopilotScanner{Root: cfg.Sources.CopilotSessionState},
++	}
++	return append(scanners, LiveScanners()...)
++}
++
++func LiveScanners() []Scanner {
++	return []Scanner{
+ 		HerdrScanner{},
+ 		TmuxScanner{},
+ 	}
+diff --git a/internal/adapters/tmux.go b/internal/adapters/tmux.go
+index ce5809d..7cec435 100644
+--- a/internal/adapters/tmux.go
++++ b/internal/adapters/tmux.go
+@@ -38,12 +38,18 @@ func (s TmuxScanner) Scan(ctx context.Context) core.ScanResult {
+ 		var exitErr *exec.ExitError
+ 		if errors.As(err, &exitErr) && isNoTmuxServer(string(out)) {
+ 			result.Skipped = true
++			result.SnapshotComplete = true
+ 			result.Message = "tmux server not running"
+ 			return result
+ 		}
++		if ctx.Err() != nil {
++			result.Err = ctx.Err()
++			return result
++		}
+ 		result.Err = err
+ 		return result
+ 	}
++	result.SnapshotComplete = true
+ 	now := time.Now().UTC()
+ 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+ 		if strings.TrimSpace(line) == "" {
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index 800c245..d936efa 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -59,6 +59,7 @@ func Execute() error {
+ 	root.PersistentFlags().StringVar(&app.dbPath, "db", "", "SQLite database path")
+ 	root.AddCommand(
+ 		app.scanCmd(),
++		app.statusCmd(),
+ 		app.listCmd(),
+ 		app.showCmd(),
+ 		app.doctorCmd(),
+@@ -138,10 +139,8 @@ func (a *appContext) scanCmd() *cobra.Command {
+ 						return err
+ 					}
+ 				}
+-				for _, rt := range res.Runtimes {
+-					if err := db.UpsertRuntime(ctx, rt); err != nil {
+-						return err
+-					}
++				if err := persistScanRuntimes(ctx, db, res); err != nil {
++					return err
+ 				}
+ 				_ = db.UpsertSource(ctx, res.Source, "scanner", sourcePath(cfg, res.Source), "")
+ 				reports = append(reports, r)
+@@ -172,6 +171,18 @@ func (a *appContext) scanCmd() *cobra.Command {
+ 	return cmd
+ }
+ 
++func persistScanRuntimes(ctx context.Context, db *store.Store, result core.ScanResult) error {
++	if result.Err == nil && result.SnapshotComplete {
++		return db.ReplaceRuntimes(ctx, result.Source, result.Runtimes)
++	}
++	for _, runtime := range result.Runtimes {
++		if err := db.UpsertRuntime(ctx, runtime); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
+ func (a *appContext) listCmd() *cobra.Command {
+ 	var filter store.Filter
+ 	var jsonOutput bool
+diff --git a/internal/cli/scan_runtime_test.go b/internal/cli/scan_runtime_test.go
+new file mode 100644
+index 0000000..550a9a7
+--- /dev/null
++++ b/internal/cli/scan_runtime_test.go
+@@ -0,0 +1,64 @@
++package cli
++
++import (
++	"context"
++	"database/sql"
++	"errors"
++	"path/filepath"
++	"testing"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++	"github.com/jdbencardinop/tesserasessions/internal/store"
++)
++
++func TestPersistScanRuntimesOnlyPrunesCompleteSnapshots(t *testing.T) {
++	db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close() //nolint:errcheck
++
++	ctx := context.Background()
++	runtime := core.RuntimeInstance{
++		ID:        "tmux-1",
++		SessionID: "session-1",
++		Backend:   "tmux",
++		NativeID:  "%1",
++		Status:    core.StatusIdle,
++	}
++	if err := db.UpsertRuntime(ctx, runtime); err != nil {
++		t.Fatal(err)
++	}
++
++	if err := persistScanRuntimes(ctx, db, core.ScanResult{
++		Source:  "tmux",
++		Skipped: true,
++		Message: "tmux unavailable",
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.RuntimeForSession(ctx, "session-1", "tmux"); err != nil {
++		t.Fatalf("incomplete scan pruned prior row: %v", err)
++	}
++
++	if err := persistScanRuntimes(ctx, db, core.ScanResult{
++		Source:           "tmux",
++		SnapshotComplete: true,
++		Err:              errors.New("provider failed after producing partial data"),
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.RuntimeForSession(ctx, "session-1", "tmux"); err != nil {
++		t.Fatalf("failed complete scan pruned prior row: %v", err)
++	}
++
++	if err := persistScanRuntimes(ctx, db, core.ScanResult{
++		Source:           "tmux",
++		SnapshotComplete: true,
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.RuntimeForSession(ctx, "session-1", "tmux"); !errors.Is(err, sql.ErrNoRows) {
++		t.Fatalf("complete empty scan should prune row, got %v", err)
++	}
++}
+diff --git a/internal/cli/status.go b/internal/cli/status.go
+new file mode 100644
+index 0000000..f10d0a6
+--- /dev/null
++++ b/internal/cli/status.go
+@@ -0,0 +1,74 @@
++package cli
++
++import (
++	"encoding/json"
++	"fmt"
++	"io"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/adapters"
++	"github.com/jdbencardinop/tesserasessions/internal/statusprovider"
++	"github.com/spf13/cobra"
++)
++
++func (a *appContext) statusCmd() *cobra.Command {
++	return newStatusCmd(statusprovider.NewService(adapters.LiveScanners()))
++}
++
++func newStatusCmd(service *statusprovider.Service) *cobra.Command {
++	var jsonOutput bool
++	var timeout time.Duration
++	var freshFor time.Duration
++
++	cmd := &cobra.Command{
++		Use:   "status",
++		Short: "Query live runtime status from a batch JSON request",
++		Long: `Read a versioned batch request from stdin and return live runtime status.
++
++The command is side-effect-free: it does not scan or write the inventory,
++attach to runtimes, focus panes, or send agent input.`,
++		Args: cobra.NoArgs,
++		RunE: func(cmd *cobra.Command, args []string) error {
++			if !jsonOutput {
++				return fmt.Errorf("status currently requires --json")
++			}
++			request, err := decodeStatusRequest(cmd.InOrStdin())
++			if err != nil {
++				return fmt.Errorf("invalid status request: %w", err)
++			}
++
++			service.Timeout = timeout
++			service.FreshFor = freshFor
++			response, err := service.Query(cmd.Context(), request)
++			if err != nil {
++				return fmt.Errorf("invalid status request: %w", err)
++			}
++
++			encoder := json.NewEncoder(cmd.OutOrStdout())
++			encoder.SetEscapeHTML(false)
++			return encoder.Encode(response)
++		},
++	}
++	cmd.Flags().BoolVar(&jsonOutput, "json", false, "read and write the versioned JSON contract")
++	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Second, "maximum duration for each live provider probe")
++	cmd.Flags().DurationVar(&freshFor, "fresh-for", 10*time.Second, "freshness window reported for observations")
++	return cmd
++}
++
++func decodeStatusRequest(reader io.Reader) (statusprovider.Request, error) {
++	decoder := json.NewDecoder(reader)
++	decoder.DisallowUnknownFields()
++
++	var request statusprovider.Request
++	if err := decoder.Decode(&request); err != nil {
++		return statusprovider.Request{}, err
++	}
++	var trailing any
++	if err := decoder.Decode(&trailing); err != io.EOF {
++		if err == nil {
++			return statusprovider.Request{}, fmt.Errorf("multiple JSON values are not allowed")
++		}
++		return statusprovider.Request{}, err
++	}
++	return request, nil
++}
+diff --git a/internal/cli/status_test.go b/internal/cli/status_test.go
+new file mode 100644
+index 0000000..aa092d6
+--- /dev/null
++++ b/internal/cli/status_test.go
+@@ -0,0 +1,97 @@
++package cli
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"os"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/adapters"
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++	"github.com/jdbencardinop/tesserasessions/internal/statusprovider"
++)
++
++type statusScannerStub struct{}
++
++func (statusScannerStub) Name() string {
++	return "stub"
++}
++
++func (statusScannerStub) Scan(context.Context) core.ScanResult {
++	return core.ScanResult{
++		Source:           "stub",
++		SnapshotComplete: true,
++		Runtimes: []core.RuntimeInstance{{
++			ID:          "stub-1",
++			Backend:     "stub",
++			NativeID:    "native-1",
++			ProjectPath: "/repo",
++			Status:      core.StatusWorking,
++		}},
++	}
++}
++
++func TestStatusCommandUsesVersionedLowercaseJSONWithoutDatabase(t *testing.T) {
++	dataDir := t.TempDir()
++	t.Setenv("TSS_DATA_DIR", dataDir)
++
++	service := statusprovider.NewService([]adapters.Scanner{statusScannerStub{}})
++	service.Now = func() time.Time {
++		return time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
++	}
++	service.ResolveGit = func(context.Context, string) (string, string) {
++		return "", ""
++	}
++
++	cmd := newStatusCmd(service)
++	cmd.SetArgs([]string{"--json"})
++	cmd.SetIn(strings.NewReader(`{"schema_version":1,"queries":[{"query_id":"repo","path":"/repo"}]}`))
++	var stdout, stderr bytes.Buffer
++	cmd.SetOut(&stdout)
++	cmd.SetErr(&stderr)
++	if err := cmd.Execute(); err != nil {
++		t.Fatalf("status failed: %v\n%s", err, stderr.String())
++	}
++
++	if strings.Contains(stdout.String(), "SchemaVersion") || !strings.Contains(stdout.String(), `"schema_version":1`) {
++		t.Fatalf("wire JSON is not explicit lowercase schema: %s", stdout.String())
++	}
++	var response statusprovider.Response
++	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
++		t.Fatal(err)
++	}
++	if response.Results[0].RuntimePresence != statusprovider.RuntimePresent ||
++		response.Results[0].AgentState != statusprovider.AgentWorking {
++		t.Fatalf("unexpected response: %+v", response.Results[0])
++	}
++
++	entries, err := os.ReadDir(dataDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(entries) != 0 {
++		t.Fatalf("status command created inventory state: %+v", entries)
++	}
++}
++
++func TestStatusCommandRequiresJSON(t *testing.T) {
++	cmd := newStatusCmd(statusprovider.NewService(nil))
++	cmd.SetArgs(nil)
++	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "requires --json") {
++		t.Fatalf("unexpected error: %v", err)
++	}
++}
++
++func TestDecodeStatusRequestRejectsUnknownAndTrailingData(t *testing.T) {
++	_, err := decodeStatusRequest(strings.NewReader(`{"schema_version":1,"queries":[],"extra":true}`))
++	if err == nil {
++		t.Fatal("expected unknown field error")
++	}
++	_, err = decodeStatusRequest(strings.NewReader(`{"schema_version":1,"queries":[]} {}`))
++	if err == nil {
++		t.Fatal("expected trailing value error")
++	}
++}
+diff --git a/internal/core/model.go b/internal/core/model.go
+index 16618fa..e002013 100644
+--- a/internal/core/model.go
++++ b/internal/core/model.go
+@@ -54,12 +54,13 @@ type RuntimeInstance struct {
+ }
+ 
+ type ScanResult struct {
+-	Source   string
+-	Sessions []Session
+-	Runtimes []RuntimeInstance
+-	Skipped  bool
+-	Message  string
+-	Err      error
++	Source           string
++	Sessions         []Session
++	Runtimes         []RuntimeInstance
++	Skipped          bool
++	SnapshotComplete bool
++	Message          string
++	Err              error
+ }
+ 
+ func CanonicalID(source, nativeID string) string {
+diff --git a/internal/statusprovider/match.go b/internal/statusprovider/match.go
+new file mode 100644
+index 0000000..53e7dd2
+--- /dev/null
++++ b/internal/statusprovider/match.go
+@@ -0,0 +1,291 @@
++package statusprovider
++
++import (
++	"fmt"
++	"path/filepath"
++	stdruntime "runtime"
++	"strings"
++)
++
++const (
++	matchRankDescendant = 1_000_000
++	matchRankExact      = 2_000_000
++	matchRankRepoBranch = 3_000_000
++)
++
++type preparedQuery struct {
++	index       int
++	query       Query
++	path        string
++	pathKey     string
++	repoRoot    string
++	repoRootKey string
++	errors      []QueryError
++}
++
++type preparedObservation struct {
++	RuntimeObservation
++	pathKey     string
++	repoRootKey string
++}
++
++type matchCandidate struct {
++	queryIndex  int
++	matchType   string
++	matchedPath string
++	rank        int
++}
++
++func matchQueries(queries []Query, providers []ProviderStatus, observations []RuntimeObservation) []Result {
++	prepared := prepareQueries(queries)
++	results := make([]Result, len(queries))
++	for index, query := range prepared {
++		results[index] = Result{
++			QueryID:         query.query.QueryID,
++			Metadata:        query.query.Metadata,
++			RuntimePresence: RuntimeUnknown,
++			AgentState:      AgentUnknown,
++			Runtimes:        []RuntimeObservation{},
++			Errors:          append([]QueryError{}, query.errors...),
++		}
++	}
++
++	preparedObservations := prepareObservations(observations)
++	bestMatchRank := make([]int, len(results))
++	for _, observation := range preparedObservations {
++		candidates := candidatesForObservation(prepared, observation)
++		if len(candidates) == 0 {
++			continue
++		}
++		best := candidates[0].rank
++		var winners []matchCandidate
++		for _, candidate := range candidates {
++			if candidate.rank > best {
++				best = candidate.rank
++				winners = winners[:0]
++			}
++			if candidate.rank == best {
++				winners = append(winners, candidate)
++			}
++		}
++		if len(winners) != 1 {
++			for _, winner := range winners {
++				appendQueryError(&results[winner.queryIndex], QueryError{
++					Code:    "ambiguous_match",
++					Message: fmt.Sprintf("runtime %s matches multiple queries with equal specificity", observation.ObservationID),
++				})
++			}
++			continue
++		}
++
++		winner := winners[0]
++		result := &results[winner.queryIndex]
++		result.Runtimes = append(result.Runtimes, observation.RuntimeObservation)
++		if winner.rank > bestMatchRank[winner.queryIndex] {
++			result.Match = &MatchEvidence{Type: winner.matchType, MatchedPath: winner.matchedPath}
++			bestMatchRank[winner.queryIndex] = winner.rank
++		}
++	}
++
++	allProvidersAvailable := len(providers) > 0
++	var unavailable []string
++	for _, provider := range providers {
++		if !provider.Available {
++			allProvidersAvailable = false
++			unavailable = append(unavailable, provider.Name)
++		}
++	}
++
++	for index := range results {
++		result := &results[index]
++		if len(result.Runtimes) > 0 {
++			result.RuntimePresence = aggregatePresence(result.Runtimes)
++			result.AgentState = aggregateAgentState(result.Runtimes)
++			continue
++		}
++		if len(result.Errors) > 0 {
++			continue
++		}
++		if allProvidersAvailable {
++			result.RuntimePresence = RuntimeAbsent
++			continue
++		}
++		if len(unavailable) > 0 {
++			appendQueryError(result, QueryError{
++				Code:    "coverage_incomplete",
++				Message: "unavailable providers: " + strings.Join(unavailable, ", "),
++			})
++		}
++	}
++	return results
++}
++
++func prepareQueries(queries []Query) []preparedQuery {
++	prepared := make([]preparedQuery, len(queries))
++	for index, query := range queries {
++		item := preparedQuery{index: index, query: query}
++		var pathErr, repoErr error
++		item.path, item.pathKey, pathErr = canonicalPathParts(query.Path)
++		item.repoRoot, item.repoRootKey, repoErr = canonicalPathParts(query.RepoRoot)
++
++		if query.Path != "" && pathErr != nil {
++			item.errors = append(item.errors, QueryError{Code: "invalid_path", Message: pathErr.Error()})
++		}
++		if query.RepoRoot != "" && repoErr != nil {
++			item.errors = append(item.errors, QueryError{Code: "invalid_repo_root", Message: repoErr.Error()})
++		}
++		if query.Path == "" && (query.RepoRoot == "" || strings.TrimSpace(query.GitBranch) == "") {
++			item.errors = append(item.errors, QueryError{
++				Code:    "insufficient_match_evidence",
++				Message: "path or repo_root plus git_branch is required",
++			})
++		}
++		prepared[index] = item
++	}
++	return prepared
++}
++
++func prepareObservations(observations []RuntimeObservation) []preparedObservation {
++	prepared := make([]preparedObservation, 0, len(observations))
++	for _, observation := range observations {
++		_, pathKey, _ := canonicalPathParts(observation.Path)
++		_, repoKey, _ := canonicalPathParts(observation.RepoRoot)
++		prepared = append(prepared, preparedObservation{
++			RuntimeObservation: observation,
++			pathKey:            pathKey,
++			repoRootKey:        repoKey,
++		})
++	}
++	return prepared
++}
++
++func candidatesForObservation(queries []preparedQuery, observation preparedObservation) []matchCandidate {
++	var candidates []matchCandidate
++	for _, query := range queries {
++		if len(query.errors) > 0 {
++			continue
++		}
++		pathCompatible := query.pathKey == "" ||
++			observation.pathKey == query.pathKey ||
++			pathWithin(observation.pathKey, query.pathKey)
++		if query.repoRootKey != "" &&
++			strings.TrimSpace(query.query.GitBranch) != "" &&
++			observation.repoRootKey == query.repoRootKey &&
++			observation.GitBranch == strings.TrimSpace(query.query.GitBranch) &&
++			pathCompatible {
++			candidates = append(candidates, matchCandidate{
++				queryIndex:  query.index,
++				matchType:   "repo_branch",
++				matchedPath: observation.Path,
++				rank:        matchRankRepoBranch + pathSpecificity(query.pathKey),
++			})
++			continue
++		}
++		if query.pathKey == "" || observation.pathKey == "" {
++			continue
++		}
++		if observation.pathKey == query.pathKey {
++			candidates = append(candidates, matchCandidate{
++				queryIndex:  query.index,
++				matchType:   "exact_path",
++				matchedPath: observation.Path,
++				rank:        matchRankExact + pathSpecificity(query.pathKey),
++			})
++			continue
++		}
++		if pathWithin(observation.pathKey, query.pathKey) {
++			candidates = append(candidates, matchCandidate{
++				queryIndex:  query.index,
++				matchType:   "descendant_path",
++				matchedPath: observation.Path,
++				rank:        matchRankDescendant + pathSpecificity(query.pathKey),
++			})
++		}
++	}
++	return candidates
++}
++
++func canonicalPath(path string) (string, error) {
++	display, _, err := canonicalPathParts(path)
++	return display, err
++}
++
++func canonicalPathParts(path string) (string, string, error) {
++	if strings.TrimSpace(path) == "" {
++		return "", "", nil
++	}
++	if !filepath.IsAbs(path) {
++		return "", "", fmt.Errorf("path must be absolute: %s", path)
++	}
++	display := filepath.Clean(path)
++	if resolved, err := filepath.EvalSymlinks(display); err == nil {
++		display = filepath.Clean(resolved)
++	}
++	key := display
++	if stdruntime.GOOS == "darwin" || stdruntime.GOOS == "windows" {
++		key = strings.ToLower(key)
++	}
++	return display, key, nil
++}
++
++func pathWithin(child, parent string) bool {
++	relative, err := filepath.Rel(parent, child)
++	if err != nil || relative == "." || filepath.IsAbs(relative) {
++		return false
++	}
++	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
++}
++
++func pathSpecificity(path string) int {
++	return len(path)
++}
++
++func aggregatePresence(observations []RuntimeObservation) RuntimePresence {
++	best := RuntimeUnknown
++	for _, observation := range observations {
++		switch observation.RuntimePresence {
++		case RuntimePresent:
++			return RuntimePresent
++		case RuntimeStale:
++			best = RuntimeStale
++		}
++	}
++	return best
++}
++
++func aggregateAgentState(observations []RuntimeObservation) AgentState {
++	best := AgentUnknown
++	bestRank := 0
++	for _, observation := range observations {
++		rank := agentStateRank(observation.AgentState)
++		if rank > bestRank {
++			best = observation.AgentState
++			bestRank = rank
++		}
++	}
++	return best
++}
++
++func agentStateRank(state AgentState) int {
++	switch state {
++	case AgentBlocked:
++		return 5
++	case AgentWorking:
++		return 4
++	case AgentReady:
++		return 3
++	case AgentDone:
++		return 2
++	default:
++		return 1
++	}
++}
++
++func appendQueryError(result *Result, queryError QueryError) {
++	for _, existing := range result.Errors {
++		if existing.Code == queryError.Code && existing.Message == queryError.Message {
++			return
++		}
++	}
++	result.Errors = append(result.Errors, queryError)
++}
+diff --git a/internal/statusprovider/model.go b/internal/statusprovider/model.go
+new file mode 100644
+index 0000000..443a726
+--- /dev/null
++++ b/internal/statusprovider/model.go
+@@ -0,0 +1,89 @@
++package statusprovider
++
++import (
++	"encoding/json"
++	"time"
++)
++
++const SchemaVersion = 1
++
++type RuntimePresence string
++
++const (
++	RuntimePresent RuntimePresence = "present"
++	RuntimeAbsent  RuntimePresence = "absent"
++	RuntimeStale   RuntimePresence = "stale"
++	RuntimeUnknown RuntimePresence = "unknown"
++)
++
++type AgentState string
++
++const (
++	AgentWorking AgentState = "working"
++	AgentReady   AgentState = "ready"
++	AgentBlocked AgentState = "blocked"
++	AgentDone    AgentState = "done"
++	AgentUnknown AgentState = "unknown"
++)
++
++type Request struct {
++	SchemaVersion int     `json:"schema_version"`
++	Queries       []Query `json:"queries"`
++}
++
++type Query struct {
++	QueryID   string          `json:"query_id"`
++	Path      string          `json:"path,omitempty"`
++	RepoRoot  string          `json:"repo_root,omitempty"`
++	GitBranch string          `json:"git_branch,omitempty"`
++	Metadata  json.RawMessage `json:"metadata,omitempty"`
++}
++
++type Response struct {
++	SchemaVersion int              `json:"schema_version"`
++	ObservedAt    time.Time        `json:"observed_at"`
++	FreshUntil    time.Time        `json:"fresh_until"`
++	Providers     []ProviderStatus `json:"providers"`
++	Results       []Result         `json:"results"`
++}
++
++type ProviderStatus struct {
++	Name       string    `json:"name"`
++	Available  bool      `json:"available"`
++	ObservedAt time.Time `json:"observed_at"`
++	FreshUntil time.Time `json:"fresh_until"`
++	Error      string    `json:"error,omitempty"`
++}
++
++type Result struct {
++	QueryID         string               `json:"query_id"`
++	Metadata        json.RawMessage      `json:"metadata,omitempty"`
++	RuntimePresence RuntimePresence      `json:"runtime_presence"`
++	AgentState      AgentState           `json:"agent_state"`
++	Match           *MatchEvidence       `json:"match,omitempty"`
++	Runtimes        []RuntimeObservation `json:"runtimes"`
++	Errors          []QueryError         `json:"errors"`
++}
++
++type MatchEvidence struct {
++	Type        string `json:"type"`
++	MatchedPath string `json:"matched_path,omitempty"`
++}
++
++type RuntimeObservation struct {
++	ObservationID   string          `json:"observation_id"`
++	Backend         string          `json:"backend"`
++	NativeID        string          `json:"native_id"`
++	Path            string          `json:"path,omitempty"`
++	RepoRoot        string          `json:"repo_root,omitempty"`
++	GitBranch       string          `json:"git_branch,omitempty"`
++	RuntimePresence RuntimePresence `json:"runtime_presence"`
++	AgentState      AgentState      `json:"agent_state"`
++	ObservedAt      time.Time       `json:"observed_at"`
++	ExpiresAt       time.Time       `json:"expires_at"`
++}
++
++type QueryError struct {
++	Code    string `json:"code"`
++	Message string `json:"message"`
++}
+diff --git a/internal/statusprovider/provider.go b/internal/statusprovider/provider.go
+new file mode 100644
+index 0000000..a6e999e
+--- /dev/null
++++ b/internal/statusprovider/provider.go
+@@ -0,0 +1,216 @@
++package statusprovider
++
++import (
++	"context"
++	"fmt"
++	"os/exec"
++	"sort"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/adapters"
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++const (
++	defaultProbeTimeout = 2 * time.Second
++	defaultFreshFor     = 10 * time.Second
++)
++
++type GitResolver func(context.Context, string) (repoRoot, branch string)
++
++type Service struct {
++	Scanners   []adapters.Scanner
++	Timeout    time.Duration
++	FreshFor   time.Duration
++	Now        func() time.Time
++	ResolveGit GitResolver
++}
++
++func NewService(scanners []adapters.Scanner) *Service {
++	return &Service{
++		Scanners:   scanners,
++		Timeout:    defaultProbeTimeout,
++		FreshFor:   defaultFreshFor,
++		Now:        time.Now,
++		ResolveGit: resolveGit,
++	}
++}
++
++func (s *Service) Query(ctx context.Context, request Request) (Response, error) {
++	if err := validateEnvelope(request); err != nil {
++		return Response{}, err
++	}
++	s.applyDefaults()
++
++	probes := s.probe(ctx)
++	observedAt := s.Now().UTC()
++	providers := make([]ProviderStatus, 0, len(probes))
++	var observations []RuntimeObservation
++	for _, probe := range probes {
++		providers = append(providers, probe.provider)
++		observations = append(observations, probe.observations...)
++	}
++
++	return Response{
++		SchemaVersion: SchemaVersion,
++		ObservedAt:    observedAt,
++		FreshUntil:    observedAt.Add(s.FreshFor),
++		Providers:     providers,
++		Results:       matchQueries(request.Queries, providers, observations),
++	}, nil
++}
++
++func (s *Service) applyDefaults() {
++	if s.Timeout <= 0 {
++		s.Timeout = defaultProbeTimeout
++	}
++	if s.FreshFor <= 0 {
++		s.FreshFor = defaultFreshFor
++	}
++	if s.Now == nil {
++		s.Now = time.Now
++	}
++	if s.ResolveGit == nil {
++		s.ResolveGit = resolveGit
++	}
++}
++
++type probeOutput struct {
++	index        int
++	provider     ProviderStatus
++	observations []RuntimeObservation
++}
++
++func (s *Service) probe(ctx context.Context) []probeOutput {
++	outputs := make(chan probeOutput, len(s.Scanners))
++	var wg sync.WaitGroup
++
++	for index, scanner := range s.Scanners {
++		wg.Add(1)
++		go func(index int, scanner adapters.Scanner) {
++			defer wg.Done()
++			outputs <- s.probeOne(ctx, index, scanner)
++		}(index, scanner)
++	}
++
++	wg.Wait()
++	close(outputs)
++
++	result := make([]probeOutput, 0, len(s.Scanners))
++	for output := range outputs {
++		result = append(result, output)
++	}
++	sort.Slice(result, func(i, j int) bool {
++		return result[i].index < result[j].index
++	})
++	return result
++}
++
++func (s *Service) probeOne(parent context.Context, index int, scanner adapters.Scanner) probeOutput {
++	ctx, cancel := context.WithTimeout(parent, s.Timeout)
++	defer cancel()
++
++	scan := scanner.Scan(ctx)
++	observedAt := s.Now().UTC()
++	provider := ProviderStatus{
++		Name:       scanner.Name(),
++		Available:  scan.Err == nil && (!scan.Skipped || scan.SnapshotComplete),
++		ObservedAt: observedAt,
++		FreshUntil: observedAt.Add(s.FreshFor),
++	}
++	if scan.Err != nil {
++		provider.Error = scan.Err.Error()
++	} else if scan.Skipped && !scan.SnapshotComplete {
++		provider.Error = scan.Message
++	}
++
++	observations := make([]RuntimeObservation, 0, len(scan.Runtimes))
++	for _, runtime := range scan.Runtimes {
++		observations = append(observations, s.runtimeObservation(ctx, runtime, observedAt))
++	}
++	return probeOutput{index: index, provider: provider, observations: observations}
++}
++
++func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeInstance, observedAt time.Time) RuntimeObservation {
++	path, _ := canonicalPath(runtime.ProjectPath)
++	repoRoot, branch := "", ""
++	if path != "" {
++		repoRoot, branch = s.ResolveGit(ctx, path)
++		repoRoot, _ = canonicalPath(repoRoot)
++	}
++
++	presence := RuntimePresent
++	if runtime.Status == core.StatusStale {
++		presence = RuntimeStale
++	}
++
++	observationID := runtime.ID
++	if observationID == "" {
++		observationID = runtime.Backend + ":" + runtime.NativeID
++	}
++	return RuntimeObservation{
++		ObservationID:   observationID,
++		Backend:         runtime.Backend,
++		NativeID:        runtime.NativeID,
++		Path:            path,
++		RepoRoot:        repoRoot,
++		GitBranch:       branch,
++		RuntimePresence: presence,
++		AgentState:      agentState(runtime.Status),
++		ObservedAt:      observedAt,
++		ExpiresAt:       observedAt.Add(s.FreshFor),
++	}
++}
++
++func agentState(status string) AgentState {
++	switch status {
++	case core.StatusNeedsAttention:
++		return AgentBlocked
++	case core.StatusWorking:
++		return AgentWorking
++	case core.StatusIdle:
++		return AgentReady
++	case core.StatusDone:
++		return AgentDone
++	default:
++		return AgentUnknown
++	}
++}
++
++func resolveGit(ctx context.Context, path string) (string, string) {
++	root := gitOutput(ctx, path, "rev-parse", "--show-toplevel")
++	if root == "" {
++		return "", ""
++	}
++	branch := gitOutput(ctx, path, "symbolic-ref", "--quiet", "--short", "HEAD")
++	return root, branch
++}
++
++func gitOutput(ctx context.Context, path string, args ...string) string {
++	commandArgs := append([]string{"-C", path}, args...)
++	out, err := exec.CommandContext(ctx, "git", commandArgs...).Output()
++	if err != nil {
++		return ""
++	}
++	return strings.TrimSpace(string(out))
++}
++
++func validateEnvelope(request Request) error {
++	if request.SchemaVersion != SchemaVersion {
++		return fmt.Errorf("unsupported schema_version %d (expected %d)", request.SchemaVersion, SchemaVersion)
++	}
++	seen := make(map[string]struct{}, len(request.Queries))
++	for index, query := range request.Queries {
++		id := strings.TrimSpace(query.QueryID)
++		if id == "" {
++			return fmt.Errorf("queries[%d].query_id is required", index)
++		}
++		if _, exists := seen[id]; exists {
++			return fmt.Errorf("duplicate query_id %q", id)
++		}
++		seen[id] = struct{}{}
++	}
++	return nil
++}
+diff --git a/internal/statusprovider/provider_test.go b/internal/statusprovider/provider_test.go
+new file mode 100644
+index 0000000..98e5d83
+--- /dev/null
++++ b/internal/statusprovider/provider_test.go
+@@ -0,0 +1,384 @@
++package statusprovider
++
++import (
++	"context"
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/adapters"
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++var fixedTime = time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
++
++type fakeScanner struct {
++	name string
++	scan func(context.Context) core.ScanResult
++}
++
++func (f fakeScanner) Name() string {
++	return f.name
++}
++
++func (f fakeScanner) Scan(ctx context.Context) core.ScanResult {
++	return f.scan(ctx)
++}
++
++func completeScanner(name string, runtimes ...core.RuntimeInstance) adapters.Scanner {
++	return fakeScanner{
++		name: name,
++		scan: func(context.Context) core.ScanResult {
++			return core.ScanResult{
++				Source:           name,
++				Runtimes:         runtimes,
++				SnapshotComplete: true,
++			}
++		},
++	}
++}
++
++func testService(scanners ...adapters.Scanner) *Service {
++	service := NewService(scanners)
++	service.Now = func() time.Time { return fixedTime }
++	service.ResolveGit = func(context.Context, string) (string, string) {
++		return "", ""
++	}
++	return service
++}
++
++func TestServiceUsesBranchHintForSharedCheckoutPath(t *testing.T) {
++	service := testService(completeScanner("herdr", core.RuntimeInstance{
++		ID:          "herdr-1",
++		Backend:     "herdr",
++		NativeID:    "w1:p1",
++		ProjectPath: "/repo",
++		Status:      core.StatusNeedsAttention,
++	}))
++	service.ResolveGit = func(context.Context, string) (string, string) {
++		return "/repo", "feature/a"
++	}
++
++	metadata := json.RawMessage(`{"workspace_id":"ws-1"}`)
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "a", Path: "/repo", RepoRoot: "/repo", GitBranch: "feature/a", Metadata: metadata},
++			{QueryID: "b", Path: "/repo", RepoRoot: "/repo", GitBranch: "feature/b"},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	first := response.Results[0]
++	if first.RuntimePresence != RuntimePresent || first.AgentState != AgentBlocked {
++		t.Fatalf("unexpected first aggregate: %+v", first)
++	}
++	if first.Match == nil || first.Match.Type != "repo_branch" {
++		t.Fatalf("expected repo_branch match, got %+v", first.Match)
++	}
++	if len(first.Runtimes) != 1 {
++		t.Fatalf("expected one raw runtime, got %d", len(first.Runtimes))
++	}
++	if string(first.Metadata) != string(metadata) {
++		t.Fatalf("metadata was not echoed: %s", first.Metadata)
++	}
++
++	second := response.Results[1]
++	if second.RuntimePresence != RuntimeAbsent || len(second.Runtimes) != 0 {
++		t.Fatalf("branch b should be absent, got %+v", second)
++	}
++}
++
++func TestBranchHintDoesNotOverrideSiblingPathContainment(t *testing.T) {
++	service := testService(completeScanner(
++		"herdr",
++		core.RuntimeInstance{
++			ID:          "frontend-runtime",
++			Backend:     "herdr",
++			NativeID:    "frontend",
++			ProjectPath: "/repo/frontend",
++			Status:      core.StatusWorking,
++		},
++		core.RuntimeInstance{
++			ID:          "backend-runtime",
++			Backend:     "herdr",
++			NativeID:    "backend",
++			ProjectPath: "/repo/backend",
++			Status:      core.StatusIdle,
++		},
++	))
++	service.ResolveGit = func(context.Context, string) (string, string) {
++		return "/repo", "main"
++	}
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "frontend", Path: "/repo/frontend", RepoRoot: "/repo", GitBranch: "main"},
++			{QueryID: "backend", Path: "/repo/backend", RepoRoot: "/repo", GitBranch: "main"},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got := response.Results[0].Runtimes; len(got) != 1 || got[0].NativeID != "frontend" {
++		t.Fatalf("frontend received wrong runtimes: %+v", got)
++	}
++	if got := response.Results[1].Runtimes; len(got) != 1 || got[0].NativeID != "backend" {
++		t.Fatalf("backend received wrong runtimes: %+v", got)
++	}
++}
++
++func TestServiceAssignsRuntimeToDeepestPath(t *testing.T) {
++	service := testService(completeScanner("tmux", core.RuntimeInstance{
++		ID:          "tmux-1",
++		Backend:     "tmux",
++		NativeID:    "%1",
++		ProjectPath: "/repo/worktrees/auth/src",
++		Status:      core.StatusIdle,
++	}))
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "repo", Path: "/repo"},
++			{QueryID: "auth", Path: "/repo/worktrees/auth"},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if response.Results[0].RuntimePresence != RuntimeAbsent {
++		t.Fatalf("parent query should not receive the runtime: %+v", response.Results[0])
++	}
++	child := response.Results[1]
++	if child.RuntimePresence != RuntimePresent || child.AgentState != AgentReady {
++		t.Fatalf("unexpected child aggregate: %+v", child)
++	}
++	if child.Match == nil || child.Match.Type != "descendant_path" {
++		t.Fatalf("unexpected match: %+v", child.Match)
++	}
++}
++
++func TestServiceAggregatesRawRuntimeStates(t *testing.T) {
++	service := testService(completeScanner(
++		"herdr",
++		core.RuntimeInstance{ID: "one", Backend: "herdr", NativeID: "one", ProjectPath: "/repo", Status: core.StatusIdle},
++		core.RuntimeInstance{ID: "two", Backend: "herdr", NativeID: "two", ProjectPath: "/repo", Status: core.StatusNeedsAttention},
++	))
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries:       []Query{{QueryID: "repo", Path: "/repo"}},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	result := response.Results[0]
++	if result.RuntimePresence != RuntimePresent || result.AgentState != AgentBlocked {
++		t.Fatalf("unexpected aggregate: %+v", result)
++	}
++	if len(result.Runtimes) != 2 {
++		t.Fatalf("expected both raw runtimes, got %d", len(result.Runtimes))
++	}
++}
++
++func TestServiceAggregatesStaleRuntimePresence(t *testing.T) {
++	tests := []struct {
++		name     string
++		runtimes []core.RuntimeInstance
++		want     RuntimePresence
++	}{
++		{
++			name: "stale only",
++			runtimes: []core.RuntimeInstance{
++				{ID: "stale", Backend: "herdr", NativeID: "stale", ProjectPath: "/repo", Status: core.StatusStale},
++			},
++			want: RuntimeStale,
++		},
++		{
++			name: "present beats stale",
++			runtimes: []core.RuntimeInstance{
++				{ID: "stale", Backend: "herdr", NativeID: "stale", ProjectPath: "/repo", Status: core.StatusStale},
++				{ID: "live", Backend: "herdr", NativeID: "live", ProjectPath: "/repo", Status: core.StatusIdle},
++			},
++			want: RuntimePresent,
++		},
++	}
++	for _, test := range tests {
++		t.Run(test.name, func(t *testing.T) {
++			service := testService(completeScanner("herdr", test.runtimes...))
++			response, err := service.Query(context.Background(), Request{
++				SchemaVersion: SchemaVersion,
++				Queries:       []Query{{QueryID: "repo", Path: "/repo"}},
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if got := response.Results[0].RuntimePresence; got != test.want {
++				t.Fatalf("presence = %q, want %q", got, test.want)
++			}
++		})
++	}
++}
++
++func TestServiceReturnsMixedQueryErrors(t *testing.T) {
++	service := testService(completeScanner("tmux", core.RuntimeInstance{
++		ID:          "tmux-1",
++		Backend:     "tmux",
++		NativeID:    "%1",
++		ProjectPath: "/repo",
++		Status:      core.StatusUnknown,
++	}))
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "valid", Path: "/repo"},
++			{QueryID: "invalid", Path: "relative/path"},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if response.Results[0].RuntimePresence != RuntimePresent {
++		t.Fatalf("valid query did not succeed: %+v", response.Results[0])
++	}
++	invalid := response.Results[1]
++	if invalid.RuntimePresence != RuntimeUnknown || len(invalid.Errors) != 1 || invalid.Errors[0].Code != "invalid_path" {
++		t.Fatalf("unexpected invalid result: %+v", invalid)
++	}
++}
++
++func TestServiceReportsIncompleteCoverage(t *testing.T) {
++	service := testService(fakeScanner{
++		name: "herdr",
++		scan: func(context.Context) core.ScanResult {
++			return core.ScanResult{Source: "herdr", Skipped: true, Message: "herdr not found"}
++		},
++	})
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries:       []Query{{QueryID: "repo", Path: "/repo"}},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	result := response.Results[0]
++	if result.RuntimePresence != RuntimeUnknown {
++		t.Fatalf("incomplete coverage must be unknown: %+v", result)
++	}
++	if len(result.Errors) != 1 || result.Errors[0].Code != "coverage_incomplete" {
++		t.Fatalf("missing coverage error: %+v", result.Errors)
++	}
++	if response.Providers[0].Available {
++		t.Fatal("provider should be unavailable")
++	}
++}
++
++func TestServiceBoundsProviderTimeout(t *testing.T) {
++	service := testService(fakeScanner{
++		name: "slow",
++		scan: func(ctx context.Context) core.ScanResult {
++			<-ctx.Done()
++			return core.ScanResult{Source: "slow", Err: ctx.Err()}
++		},
++	})
++	service.Timeout = 10 * time.Millisecond
++
++	start := time.Now()
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries:       []Query{{QueryID: "repo", Path: "/repo"}},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
++		t.Fatalf("probe exceeded bound: %s", elapsed)
++	}
++	if response.Providers[0].Available || response.Providers[0].Error == "" {
++		t.Fatalf("timeout not surfaced: %+v", response.Providers[0])
++	}
++}
++
++func TestServiceResolvesSymlinkQueryPath(t *testing.T) {
++	root := t.TempDir()
++	realPath := filepath.Join(root, "real")
++	linkPath := filepath.Join(root, "link")
++	if err := os.MkdirAll(filepath.Join(realPath, "src"), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Symlink(realPath, linkPath); err != nil {
++		t.Skipf("symlinks unavailable: %v", err)
++	}
++
++	service := testService(completeScanner("tmux", core.RuntimeInstance{
++		ID:          "tmux-1",
++		Backend:     "tmux",
++		NativeID:    "%1",
++		ProjectPath: filepath.Join(realPath, "src"),
++		Status:      core.StatusIdle,
++	}))
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries:       []Query{{QueryID: "linked", Path: linkPath}},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if response.Results[0].RuntimePresence != RuntimePresent {
++		t.Fatalf("symlink query did not match: %+v", response.Results[0])
++	}
++}
++
++func TestServiceRejectsInvalidEnvelope(t *testing.T) {
++	service := testService()
++	_, err := service.Query(context.Background(), Request{
++		SchemaVersion: 99,
++		Queries:       []Query{{QueryID: "repo", Path: "/repo"}},
++	})
++	if err == nil {
++		t.Fatal("expected schema error")
++	}
++	_, err = service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "duplicate", Path: "/one"},
++			{QueryID: "duplicate", Path: "/two"},
++		},
++	})
++	if err == nil {
++		t.Fatal("expected duplicate query id error")
++	}
++}
++
++func TestAmbiguousEqualSpecificityRemainsUnknown(t *testing.T) {
++	service := testService(completeScanner("tmux", core.RuntimeInstance{
++		ID:          "tmux-1",
++		Backend:     "tmux",
++		NativeID:    "%1",
++		ProjectPath: "/repo",
++		Status:      core.StatusIdle,
++	}))
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "one", Path: "/repo"},
++			{QueryID: "two", Path: "/repo"},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, result := range response.Results {
++		if result.RuntimePresence != RuntimeUnknown || len(result.Errors) == 0 || result.Errors[0].Code != "ambiguous_match" {
++			t.Fatalf("unexpected ambiguous result: %+v", result)
++		}
++	}
++}
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 9f419d0..82dbc52 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -185,13 +185,54 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
+ }
+ 
+ func (s *Store) UpsertRuntime(ctx context.Context, rt core.RuntimeInstance) error {
+-	if rt.UpdatedAt.IsZero() {
+-		rt.UpdatedAt = time.Now().UTC()
++	rt = normalizeRuntime(rt)
++	if strings.TrimSpace(rt.Backend) == "" {
++		return fmt.Errorf("runtime backend is required")
+ 	}
+-	if rt.Status == "" {
+-		rt.Status = core.StatusUnknown
++	return upsertRuntime(ctx, s.db, rt)
++}
++
++// ReplaceRuntimes atomically replaces one backend's complete live snapshot.
++// Callers must only use it after an authoritative provider scan succeeds.
++func (s *Store) ReplaceRuntimes(ctx context.Context, backend string, runtimes []core.RuntimeInstance) error {
++	backend = strings.TrimSpace(backend)
++	if backend == "" {
++		return fmt.Errorf("runtime backend is required")
++	}
++	normalized := make([]core.RuntimeInstance, len(runtimes))
++	for index, runtime := range runtimes {
++		if runtime.Backend == "" {
++			runtime.Backend = backend
++		}
++		if runtime.Backend != backend {
++			return fmt.Errorf("runtime backend %q does not match snapshot backend %q", runtime.Backend, backend)
++		}
++		normalized[index] = normalizeRuntime(runtime)
++	}
++
++	tx, err := s.db.BeginTx(ctx, nil)
++	if err != nil {
++		return err
++	}
++	defer tx.Rollback() //nolint:errcheck
++
++	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_instances WHERE backend = ?`, backend); err != nil {
++		return err
+ 	}
+-	_, err := s.db.ExecContext(ctx, `INSERT INTO runtime_instances
++	for _, runtime := range normalized {
++		if err := upsertRuntime(ctx, tx, runtime); err != nil {
++			return err
++		}
++	}
++	return tx.Commit()
++}
++
++type runtimeExecer interface {
++	ExecContext(context.Context, string, ...any) (sql.Result, error)
++}
++
++func upsertRuntime(ctx context.Context, executor runtimeExecer, rt core.RuntimeInstance) error {
++	_, err := executor.ExecContext(ctx, `INSERT INTO runtime_instances
+ 		(id, session_id, backend, native_id, surface, project_path, command, status, attach_command, updated_at)
+ 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ 		ON CONFLICT(backend, native_id) DO UPDATE SET
+@@ -207,6 +248,16 @@ func (s *Store) UpsertRuntime(ctx context.Context, rt core.RuntimeInstance) erro
+ 	return err
+ }
+ 
++func normalizeRuntime(rt core.RuntimeInstance) core.RuntimeInstance {
++	if rt.UpdatedAt.IsZero() {
++		rt.UpdatedAt = time.Now().UTC()
++	}
++	if rt.Status == "" {
++		rt.Status = core.StatusUnknown
++	}
++	return rt
++}
++
+ func (s *Store) ListSessions(ctx context.Context, filter Filter) ([]core.Session, error) {
+ 	var where []string
+ 	var args []any
+diff --git a/internal/store/store_test.go b/internal/store/store_test.go
+index 83f3410..5be67e0 100644
+--- a/internal/store/store_test.go
++++ b/internal/store/store_test.go
+@@ -2,6 +2,8 @@ package store
+ 
+ import (
+ 	"context"
++	"database/sql"
++	"errors"
+ 	"path/filepath"
+ 	"testing"
+ 	"time"
+@@ -31,3 +33,49 @@ func TestUpsertAndGetSession(t *testing.T) {
+ 		t.Fatalf("unexpected session: %#v", got)
+ 	}
+ }
++
++func TestReplaceRuntimesIsAtomicPerBackend(t *testing.T) {
++	db, err := Open(filepath.Join(t.TempDir(), "sessions.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close() //nolint:errcheck
++	ctx := context.Background()
++
++	for _, runtime := range []core.RuntimeInstance{
++		{ID: "tmux-1", SessionID: "session-1", Backend: "tmux", NativeID: "%1"},
++		{ID: "tmux-2", SessionID: "session-2", Backend: "tmux", NativeID: "%2"},
++		{ID: "herdr-1", SessionID: "session-3", Backend: "herdr", NativeID: "w1:p1"},
++	} {
++		if err := db.UpsertRuntime(ctx, runtime); err != nil {
++			t.Fatal(err)
++		}
++	}
++
++	if err := db.ReplaceRuntimes(ctx, "tmux", []core.RuntimeInstance{{
++		ID:        "tmux-2",
++		SessionID: "session-2",
++		Backend:   "tmux",
++		NativeID:  "%2",
++		Status:    core.StatusWorking,
++	}}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.RuntimeForSession(ctx, "session-1", "tmux"); !errors.Is(err, sql.ErrNoRows) {
++		t.Fatalf("removed tmux row still present: %v", err)
++	}
++	got, err := db.RuntimeForSession(ctx, "session-2", "tmux")
++	if err != nil || got.Status != core.StatusWorking {
++		t.Fatalf("replacement row missing: %+v, %v", got, err)
++	}
++	if _, err := db.RuntimeForSession(ctx, "session-3", "herdr"); err != nil {
++		t.Fatalf("other backend was pruned: %v", err)
++	}
++
++	if err := db.ReplaceRuntimes(ctx, "tmux", nil); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.RuntimeForSession(ctx, "session-2", "tmux"); !errors.Is(err, sql.ErrNoRows) {
++		t.Fatalf("empty complete snapshot did not clear backend: %v", err)
++	}
++}

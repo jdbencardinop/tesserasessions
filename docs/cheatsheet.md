@@ -65,6 +65,36 @@ tss scan --source tmux
 tss scan --json
 ```
 
+Successful Herdr/tmux scans replace that backend's stored runtime snapshot.
+Unavailable providers do not erase prior rows.
+
+## Query live runtime status
+
+```sh
+printf '%s\n' '{
+  "schema_version": 1,
+  "queries": [
+    {
+      "query_id": "auth/models",
+      "path": "/absolute/worktrees/auth-models",
+      "repo_root": "/absolute/repos/app",
+      "git_branch": "feature/auth-models"
+    }
+  ]
+}' | tss status --json
+```
+
+Useful controls:
+
+```sh
+tss status --json --timeout 2s --fresh-for 10s < request.json
+```
+
+This command probes live providers without running `scan` or writing the
+database. The response separates `runtime_presence` from `agent_state` and
+includes raw observations, freshness, match evidence, provider availability,
+and per-query errors.
+
 ## Summarize locally
 
 ```sh
@@ -174,15 +204,16 @@ tpatch status <feature-slug>
 tpatch next <feature-slug>
 ```
 
-Normal lifecycle:
+Path B lifecycle:
 
 ```sh
-tpatch analyze <feature-slug>
-tpatch define <feature-slug>
-tpatch explore <feature-slug>
-tpatch implement <feature-slug>
-tpatch apply <feature-slug>
+tpatch analyze <feature-slug> --manual
+tpatch define <feature-slug> --manual
+tpatch explore <feature-slug> --manual
+tpatch apply <feature-slug> --mode started
+# Implement directly; do not call the configured tpatch AI provider.
 tpatch test <feature-slug>
+tpatch apply <feature-slug> --mode done
 tpatch record <feature-slug>
 ```
 

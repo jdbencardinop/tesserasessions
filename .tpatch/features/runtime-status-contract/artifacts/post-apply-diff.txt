@@ -1,0 +1,14 @@
+ .tpatch/FEATURES.md                                |  1 +
+ .../features/agent-source-expansion/status.json    |  4 ++
+ CHANGELOG.md                                       |  5 +-
+ README.md                                          | 29 ++++++++--
+ docs/cheatsheet.md                                 | 43 ++++++++++++---
+ docs/roadmap.md                                    | 57 ++++++++++++++++++--
+ internal/adapters/herdr.go                         |  5 ++
+ internal/adapters/scanner.go                       |  8 ++-
+ internal/adapters/tmux.go                          |  6 +++
+ internal/cli/root.go                               | 19 +++++--
+ internal/core/model.go                             | 13 ++---
+ internal/store/store.go                            | 61 ++++++++++++++++++++--
+ internal/store/store_test.go                       | 48 +++++++++++++++++
+ 13 files changed, 266 insertions(+), 33 deletions(-)

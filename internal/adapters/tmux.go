@@ -38,12 +38,18 @@ func (s TmuxScanner) Scan(ctx context.Context) core.ScanResult {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && isNoTmuxServer(string(out)) {
 			result.Skipped = true
+			result.SnapshotComplete = true
 			result.Message = "tmux server not running"
+			return result
+		}
+		if ctx.Err() != nil {
+			result.Err = ctx.Err()
 			return result
 		}
 		result.Err = err
 		return result
 	}
+	result.SnapshotComplete = true
 	now := time.Now().UTC()
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if strings.TrimSpace(line) == "" {

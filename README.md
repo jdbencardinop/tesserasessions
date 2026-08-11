@@ -59,6 +59,10 @@ go run ./cmd/tss doctor
 # Scan all known sources.
 go run ./cmd/tss scan
 
+# Query live runtime status without mutating the inventory.
+printf '%s\n' '{"schema_version":1,"queries":[{"query_id":"repo","path":"'"$PWD"'"}]}' |
+  go run ./cmd/tss status --json
+
 # List recent sessions.
 go run ./cmd/tss list
 
@@ -86,6 +90,7 @@ tss show claude-abc123
 | --- | --- |
 | `tss doctor` | Show config paths, source health, backend availability, and inventory count. |
 | `tss scan` | Refresh the local inventory from configured sources. |
+| `tss status --json` | Answer a side-effect-free batch query for live runtime presence and agent state. |
 | `tss list` / `tss ls` | List indexed sessions with filters. |
 | `tss show <session>` | Show metadata, paths, summary, and resume/attach commands. |
 | `tss summarize <session>` | Generate a local/extractive title and goal summary. |
@@ -104,6 +109,7 @@ Useful flags:
 
 ```sh
 tss scan --source claude
+printf '%s\n' '{"schema_version":1,"queries":[{"query_id":"repo","path":"/absolute/repo"}]}' | tss status --json
 tss list --source copilot --limit 10
 tss list --query tesseraspaces
 tss list --status needs_attention
@@ -125,6 +131,12 @@ tss --db /tmp/tss.db scan
 ## How it works
 
 `tss scan` runs source adapters and stores normalized records in SQLite.
+Successful live-adapter scans atomically replace that backend's runtime
+snapshot; failed or unavailable adapters preserve prior rows.
+
+`tss status --json` is separate from scanning. It performs bounded Herdr/tmux
+probes in memory, reads a versioned batch request from stdin, and writes the
+versioned response to stdout without opening or mutating the inventory.
 
 Initial adapters:
 
@@ -156,6 +168,7 @@ tss --db /path/to/sessions.db list
 ## Privacy and safety
 
 - Scanners are read-only against agent session stores.
+- `tss status --json` has no inventory, attach, focus, or agent-input side effects.
 - Transcript parsing is lazy and only used where needed, such as `summarize`.
 - Content search is opt-in with `tss search --content`.
 - fzf selection is optional with `tss search --fzf`; non-interactive search works without fzf.
@@ -167,17 +180,22 @@ tss --db /path/to/sessions.db list
 
 This repo uses `tpatch` to track feature work.
 
+This repo uses tpatch Path B: the coding agent authors phase artifacts directly
+and advances them with `--manual`; the configured tpatch AI provider is not
+used.
+
 Common commands:
 
 ```sh
 tpatch status --dag
 tpatch next <feature-slug>
-tpatch analyze <feature-slug>
-tpatch define <feature-slug>
-tpatch explore <feature-slug>
-tpatch implement <feature-slug>
-tpatch apply <feature-slug>
+tpatch analyze <feature-slug> --manual
+tpatch define <feature-slug> --manual
+tpatch explore <feature-slug> --manual
+tpatch apply <feature-slug> --mode started
+# Implement and validate directly.
 tpatch test <feature-slug>
+tpatch apply <feature-slug> --mode done
 tpatch record <feature-slug>
 ```
 
@@ -193,6 +211,7 @@ Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [doc
 
 - [Cheatsheet](docs/cheatsheet.md)
 - [Roadmap](docs/roadmap.md)
+- [Runtime status contract](docs/runtime-status-contract.md)
 
 ## License
 

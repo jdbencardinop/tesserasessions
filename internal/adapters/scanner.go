@@ -13,9 +13,15 @@ type Scanner interface {
 }
 
 func DefaultScanners(cfg config.Config) []Scanner {
-	return []Scanner{
+	scanners := []Scanner{
 		ClaudeScanner{Root: cfg.Sources.ClaudeProjects},
 		CopilotScanner{Root: cfg.Sources.CopilotSessionState},
+	}
+	return append(scanners, LiveScanners()...)
+}
+
+func LiveScanners() []Scanner {
+	return []Scanner{
 		HerdrScanner{},
 		TmuxScanner{},
 	}

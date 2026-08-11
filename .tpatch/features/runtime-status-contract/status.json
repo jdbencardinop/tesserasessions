@@ -1,0 +1,37 @@
+{
+  "id": "runtime-status-contract",
+  "slug": "runtime-status-contract",
+  "title": "Expose a side-effect-free, versioned batch JSON status-provider contract for external orchestrators such as tws. Query live runtime observations by opaque query ID plus verified path and optional Git hints; return freshness, match evidence, raw runtimes, and separate runtime_presence and agent_state aggregates without guessing cwd-less sessions.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-08-11T07:59:38Z",
+  "updated_at": "2026-08-11T17:23:42Z",
+  "last_command": "record",
+  "notes": "landed at 2026-08-11T17:23:42Z",
+  "apply": {
+    "completed_at": "2026-08-11T17:23:09Z",
+    "base_commit": "3f5f340736cdf236e467f0134d80b416152da528",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "depends_on": [
+    {
+      "slug": "cli-inventory-core",
+      "kind": "hard"
+    },
+    {
+      "slug": "live-herdr-tmux-control",
+      "kind": "hard"
+    }
+  ],
+  "verify": {
+    "verified_at": "2026-08-11T17:23:09Z",
+    "passed": true,
+    "recipe_hash_at_verify": "ce9c5e7cb0eb019963ec78d71a5ac0073ddf911719930078f020488ac663a94e",
+    "patch_hash_at_verify": "3b216d34a45f4cd5470e1ad8e45de268958ec90b45c52009850e42f5373b5239",
+    "parent_snapshot": {
+      "cli-inventory-core": "applied",
+      "live-herdr-tmux-control": "applied"
+    }
+  }
+}

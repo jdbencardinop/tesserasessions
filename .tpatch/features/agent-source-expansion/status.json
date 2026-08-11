@@ -13,6 +13,10 @@
     {
       "slug": "cli-inventory-core",
       "kind": "hard"
+    },
+    {
+      "slug": "runtime-status-contract",
+      "kind": "soft"
     }
   ]
 }

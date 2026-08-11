@@ -59,6 +59,7 @@ func Execute() error {
 	root.PersistentFlags().StringVar(&app.dbPath, "db", "", "SQLite database path")
 	root.AddCommand(
 		app.scanCmd(),
+		app.statusCmd(),
 		app.listCmd(),
 		app.showCmd(),
 		app.doctorCmd(),
@@ -138,10 +139,8 @@ func (a *appContext) scanCmd() *cobra.Command {
 						return err
 					}
 				}
-				for _, rt := range res.Runtimes {
-					if err := db.UpsertRuntime(ctx, rt); err != nil {
-						return err
-					}
+				if err := persistScanRuntimes(ctx, db, res); err != nil {
+					return err
 				}
 				_ = db.UpsertSource(ctx, res.Source, "scanner", sourcePath(cfg, res.Source), "")
 				reports = append(reports, r)
@@ -170,6 +169,18 @@ func (a *appContext) scanCmd() *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, herdr, tmux)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON")
 	return cmd
+}
+
+func persistScanRuntimes(ctx context.Context, db *store.Store, result core.ScanResult) error {
+	if result.Err == nil && result.SnapshotComplete {
+		return db.ReplaceRuntimes(ctx, result.Source, result.Runtimes)
+	}
+	for _, runtime := range result.Runtimes {
+		if err := db.UpsertRuntime(ctx, runtime); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *appContext) listCmd() *cobra.Command {

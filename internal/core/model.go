@@ -54,12 +54,13 @@ type RuntimeInstance struct {
 }
 
 type ScanResult struct {
-	Source   string
-	Sessions []Session
-	Runtimes []RuntimeInstance
-	Skipped  bool
-	Message  string
-	Err      error
+	Source           string
+	Sessions         []Session
+	Runtimes         []RuntimeInstance
+	Skipped          bool
+	SnapshotComplete bool
+	Message          string
+	Err              error
 }
 
 func CanonicalID(source, nativeID string) string {

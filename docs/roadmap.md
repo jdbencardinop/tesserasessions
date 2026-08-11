@@ -27,13 +27,40 @@ go test ./...
 
 ```text
 cli-inventory-core
-|-- agent-source-expansion       (hard)
 |-- docs-guide-cheatsheet        (soft)
 |-- live-herdr-tmux-control      (hard)
+|   `-- runtime-status-contract  (hard)
+|       `-- agent-source-expansion (soft ordering)
 |-- smart-session-summaries      (hard)
 `-- session-ux-roadmap           (hard)
     `-- smart-session-summaries  (soft ordering hint)
 ```
+
+`runtime-status-contract` also depends directly on `cli-inventory-core`.
+`agent-source-expansion` keeps its existing hard dependency on the core.
+
+## Delivered - runtime status contract
+
+The side-effect-free, versioned status-provider contract for orchestrators such
+as `tws` is implemented and verified. It does not replace the consumer's
+topology, health, or rollup authority.
+
+Cross-repository work is intentionally split:
+
+1. `tws` implements `agent-work-status-dashboard` from its existing local
+   signals without waiting for `tss`. Shipped in `tws` v1.2.12.
+2. `tss` implements `runtime-status-contract`. Delivered.
+3. `tws` later adds an optional `tss-status-enrichment` child feature with
+   timeout/schema guards and baseline fallback.
+
+See [Runtime status provider contract](runtime-status-contract.md).
+
+## Next - agent source expansion
+
+The next local feature is `agent-source-expansion`, beginning with Hermes Agent
+and retaining the metadata-first, read-only parser boundary. Its hard core
+dependency is applied and its soft ordering dependency on
+`runtime-status-contract` is now satisfied.
 
 ## Tracked features
 
@@ -41,7 +68,8 @@ cli-inventory-core
 | --- | --- | --- | --- |
 | `cli-inventory-core` | MVP foundation | Standalone Go CLI, SQLite inventory, Claude/Copilot scans, Herdr/tmux scaffolding, and basic commands. | Initial implementation exists; tpatch was adopted after the first slice, so record this feature before a real commit/landing flow. |
 | `docs-guide-cheatsheet` | Docs slice | README, cheatsheet, scope, architecture, command examples, and tpatch workflow docs. | Depends softly on the core because docs can evolve while core changes. |
-| `live-herdr-tmux-control` | Next live-control hardening | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Herdr remains preferred; tmux remains fallback. |
+| `live-herdr-tmux-control` | Live-control foundation | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Applied; Herdr remains preferred and tmux remains fallback. |
+| `runtime-status-contract` | Status provider | Publish a side-effect-free batch JSON provider with freshness, match evidence, raw runtimes, and separate presence/agent-state aggregates. | Applied and verified; does not own the `tws` rollup and never guesses cwd-less sessions. |
 | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
 | `agent-source-expansion` | Adapter expansion | Add Hermes Agent first, then t3code once the core data model is stable. | Parsers should stay read-only and metadata-first. |
 | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
@@ -82,7 +110,23 @@ Target:
 - Clear status mapping: `needs_attention`, `working`, `idle`, `done`, `stale`, `unknown`.
 - Herdr-first behavior when installed, tmux fallback when not.
 
-### M3 - Summary quality
+### M3 - Runtime status provider contract
+
+Delivered:
+
+- Versioned batch request/response JSON on stdin/stdout.
+- Side-effect-free live probes with no implicit scan.
+- Opaque query IDs plus verified path and optional Git hints.
+- Separate `runtime_presence` and `agent_state`.
+- Provider availability, observation timestamps, expiry, and per-query errors.
+- Raw runtime observations plus deterministic aggregation.
+- Explicitly unmatched cwd-less sessions.
+- Runtime-row reconciliation during explicit scans.
+
+The feature is unblocked: both hard dependencies, `cli-inventory-core` and
+`live-herdr-tmux-control`, are applied.
+
+### M4 - Summary quality
 
 Target:
 
@@ -92,7 +136,7 @@ Target:
 - Confidence scoring based on source quality.
 - Explicit opt-in remote summarizer command.
 
-### M4 - More source adapters
+### M5 - More source adapters
 
 Target:
 
@@ -101,7 +145,7 @@ Target:
 - Optional Codex/OpenCode adapter if local stores are present.
 - Parser fixtures using redacted or synthetic data.
 
-### M5 - Operator UX
+### M6 - Operator UX
 
 Target:
 
@@ -117,6 +161,9 @@ Target:
 - Local first: no telemetry, no hosted database.
 - Metadata first: avoid transcript parsing unless requested.
 - Read-only source scans: do not mutate agent stores.
+- Status-provider queries are side-effect-free and never imply a scan.
+- External consumers use versioned JSON, never SQLite or Go imports.
+- Consumers retain topology, local-health, and final-rollup authority.
 - Herdr first for live state; tmux fallback for portability.
 - Explicit execution: support `--print` on potentially interactive commands.
 - tpatch tracked: every roadmap slice should have a feature slug before implementation.

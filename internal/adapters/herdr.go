@@ -25,6 +25,10 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
 	}
 	out, err := exec.CommandContext(ctx, "herdr", "agent", "list", "--json").Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			result.Err = ctx.Err()
+			return result
+		}
 		result.Skipped = true
 		result.Message = "herdr agent list unavailable; is the server running?"
 		return result
@@ -34,6 +38,7 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
 		result.Err = err
 		return result
 	}
+	result.SnapshotComplete = true
 	now := time.Now().UTC()
 	for _, item := range objectList(payload) {
 		target, paneID := herdrTarget(item)

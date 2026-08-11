@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "feature": "runtime-status-contract",
+  "current_generation": 2,
+  "generations": [
+    {
+      "generation": 1,
+      "generation_id": "pg_b2695e93bb61",
+      "kind": "record",
+      "patch_sha256": "1ae7b1aec88dfb53cdb99faf81db0f978235abce7176d7a91d7eca279189a255",
+      "git_patch_id": "b1a041b8caee13e0551a09b1fe5e1414103231a7",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "ce9c5e7cb0eb019963ec78d71a5ac0073ddf911719930078f020488ac663a94e",
+      "canonical_patch": "",
+      "audit_patch": "",
+      "base_commit": "3f5f340736cdf236e467f0134d80b416152da528",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [
+          "CHANGELOG.md",
+          "README.md",
+          "docs/cheatsheet.md",
+          "docs/roadmap.md",
+          "docs/runtime-status-contract.md",
+          "internal/adapters/herdr.go",
+          "internal/adapters/scanner.go",
+          "internal/adapters/tmux.go",
+          "internal/cli/root.go",
+          "internal/cli/scan_runtime_test.go",
+          "internal/cli/status.go",
+          "internal/cli/status_test.go",
+          "internal/core/model.go",
+          "internal/statusprovider/",
+          "internal/store/store.go",
+          "internal/store/store_test.go"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "docs/runtime-status-contract.md",
+        "internal/adapters/herdr.go",
+        "internal/adapters/scanner.go",
+        "internal/adapters/tmux.go",
+        "internal/cli/root.go",
+        "internal/cli/scan_runtime_test.go",
+        "internal/cli/status.go",
+        "internal/cli/status_test.go",
+        "internal/core/model.go",
+        "internal/statusprovider/match.go",
+        "internal/statusprovider/model.go",
+        "internal/statusprovider/provider.go",
+        "internal/statusprovider/provider_test.go",
+        "internal/store/store.go",
+        "internal/store/store_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        },
+        {
+          "slug": "live-herdr-tmux-control",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 1,
+          "parent_patch_sha256": "234946cf9056fc84c65b25e36c0c980261df73c8eb3d6faf9fd9a7e4d0b00f96",
+          "parent_recipe_sha256": "98f9e296367f6dae0b9e06e16651f2a83501e1b9b4ba76e4a7fa737a52977534"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    },
+    {
+      "generation": 2,
+      "generation_id": "pg_de65630914c1",
+      "kind": "amend-refresh",
+      "reason": "Mark the verified contract delivered and advance the local roadmap to agent-source-expansion.",
+      "patch_sha256": "3b216d34a45f4cd5470e1ad8e45de268958ec90b45c52009850e42f5373b5239",
+      "git_patch_id": "90e945b243d9779907f18e8b4e6ebfde87fc4d6f",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "ce9c5e7cb0eb019963ec78d71a5ac0073ddf911719930078f020488ac663a94e",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "patches/002-refresh.patch",
+      "base_commit": "3f5f340736cdf236e467f0134d80b416152da528",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "docs/runtime-status-contract.md",
+        "internal/adapters/herdr.go",
+        "internal/adapters/scanner.go",
+        "internal/adapters/tmux.go",
+        "internal/cli/root.go",
+        "internal/cli/scan_runtime_test.go",
+        "internal/cli/status.go",
+        "internal/cli/status_test.go",
+        "internal/core/model.go",
+        "internal/statusprovider/match.go",
+        "internal/statusprovider/model.go",
+        "internal/statusprovider/provider.go",
+        "internal/statusprovider/provider_test.go",
+        "internal/store/store.go",
+        "internal/store/store_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        },
+        {
+          "slug": "live-herdr-tmux-control",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 1,
+          "parent_patch_sha256": "234946cf9056fc84c65b25e36c0c980261df73c8eb3d6faf9fd9a7e4d0b00f96",
+          "parent_recipe_sha256": "98f9e296367f6dae0b9e06e16651f2a83501e1b9b4ba76e4a7fa737a52977534"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    }
+  ]
+}
