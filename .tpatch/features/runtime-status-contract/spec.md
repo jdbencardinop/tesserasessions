@@ -42,10 +42,14 @@ explicitly stale evidence, and does not scan or mutate the inventory database.
 7. Matching is deterministic:
    - resolve absolute paths and symlinks where possible;
    - normalize separators, trailing slashes, and case on case-insensitive hosts;
+   - derive `repo_root` from Git's common directory so linked worktrees share
+     the main repository identity;
    - support exact and ancestor path matches;
    - choose the deepest matching query path;
-   - use `repo_root` plus `git_branch` to distinguish shared checkout paths when
-     runtime evidence contains those fields;
+   - use `repo_root` plus `git_branch` to disambiguate equally specific/shared
+     paths when runtime evidence contains those fields;
+   - reject known repository or branch conflicts instead of falling back to
+     path-only matching;
    - leave cwd-less or unverifiable sessions unmatched.
 8. Multiple matches are reduced deterministically:
    - presence: live `present` beats `stale`, which beats `unknown`; `absent`
@@ -54,7 +58,7 @@ explicitly stale evidence, and does not scan or mutate the inventory database.
    - raw matches remain available so consumers can apply a different rollup.
 9. Provider failures are bounded and explicit. A missing, timed-out, or
    incompatible adapter returns availability/error metadata rather than a false
-   `absent`.
+   `absent`. Metadata enrichment timeouts also make coverage incomplete.
 10. Runtime persistence is reconciled by explicit scans:
     - a successful adapter scan removes or expires rows absent from that scan
       generation;
@@ -64,7 +68,9 @@ explicitly stale evidence, and does not scan or mutate the inventory database.
     wire contract is not the raw database model.
 12. Tests cover malformed envelopes, mixed per-query success/error, shared
     repository paths with branch hints, nested cwd matching, multiple-runtime
-    aggregation, timeouts, stale observations, and unchanged database state.
+    aggregation, metadata-enrichment timeouts, linked Git worktrees, current
+    Herdr response shape, tmux shell filtering, stale observations, and
+    unchanged database state.
 
 ## Consumer precedence
 
@@ -97,4 +103,3 @@ override a live direct/tmux session known to `tws`. Missing or incompatible
 3. Add matching, aggregation, freshness, and per-query errors.
 4. Reconcile persisted runtime rows during explicit `scan`.
 5. Publish examples and consumer compatibility tests.
-

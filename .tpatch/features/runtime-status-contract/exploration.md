@@ -9,10 +9,11 @@
 - `internal/adapters/scanner.go`
   - `Scanner` and `DefaultScanners` are the current adapter seam.
 - `internal/adapters/herdr.go`
-  - Produces semantic Herdr runtime state and verified foreground cwd when
-    available.
+  - Uses the current `herdr agent list` default JSON response, including
+    `agent_status`, and rejects unrecognized response shapes.
 - `internal/adapters/tmux.go`
-  - Produces tmux pane/cwd observations but weak semantic state.
+  - Produces observations only for panes with a recognized coding-agent command;
+    ordinary shells are not agent runtimes.
 - `internal/core/model.go`
   - `Session`, `RuntimeInstance`, and the current mixed status constants.
 - `internal/store/store.go`
@@ -39,7 +40,7 @@
 ## Minimal first slice
 
 1. Schema v1 DTOs and stdin/stdout command plumbing.
-2. Herdr and tmux in-memory observations with bounded contexts.
+2. Herdr and verified-agent tmux observations with bounded contexts.
 3. Path/branch matching and raw plus aggregate responses.
 4. Provider availability and per-query errors.
 5. Tests proving the command does not mutate the database.
@@ -55,4 +56,3 @@ make lint
 git diff --check
 tpatch feature deps --validate-all
 ```
-

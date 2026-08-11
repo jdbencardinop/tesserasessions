@@ -5,11 +5,11 @@
   "state": "applied",
   "compatibility": "unknown",
   "requested_at": "2026-08-11T07:59:38Z",
-  "updated_at": "2026-08-11T17:23:42Z",
-  "last_command": "record",
-  "notes": "landed at 2026-08-11T17:23:42Z",
+  "updated_at": "2026-08-11T18:20:46Z",
+  "last_command": "verify",
+  "notes": "Patch recorded",
   "apply": {
-    "completed_at": "2026-08-11T17:23:09Z",
+    "completed_at": "2026-08-11T18:20:46Z",
     "base_commit": "3f5f340736cdf236e467f0134d80b416152da528",
     "has_patch": true
   },
@@ -25,10 +25,10 @@
     }
   ],
   "verify": {
-    "verified_at": "2026-08-11T17:23:09Z",
-    "passed": true,
-    "recipe_hash_at_verify": "ce9c5e7cb0eb019963ec78d71a5ac0073ddf911719930078f020488ac663a94e",
-    "patch_hash_at_verify": "3b216d34a45f4cd5470e1ad8e45de268958ec90b45c52009850e42f5373b5239",
+    "verified_at": "2026-08-11T18:20:46Z",
+    "passed": false,
+    "recipe_hash_at_verify": "816f3b1e38de03513047751311c3984abe1894c32052722ef93f817e5e7eb6b8",
+    "patch_hash_at_verify": "4c157445d7a1890541952337c96a51f1a9d7d6e4efc2e94e8c4ca578fc8d7ede",
     "parent_snapshot": {
       "cli-inventory-core": "applied",
       "live-herdr-tmux-control": "applied"

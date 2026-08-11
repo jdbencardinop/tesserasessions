@@ -1,7 +1,7 @@
 {
   "version": 1,
   "feature": "runtime-status-contract",
-  "current_generation": 2,
+  "current_generation": 4,
   "generations": [
     {
       "generation": 1,
@@ -95,7 +95,7 @@
       "git_patch_id": "90e945b243d9779907f18e8b4e6ebfde87fc4d6f",
       "git_patch_id_algorithm": "git-patch-id-stable",
       "recipe_sha256": "ce9c5e7cb0eb019963ec78d71a5ac0073ddf911719930078f020488ac663a94e",
-      "canonical_patch": "artifacts/post-apply.patch",
+      "canonical_patch": "",
       "audit_patch": "patches/002-refresh.patch",
       "base_commit": "3f5f340736cdf236e467f0134d80b416152da528",
       "upper": {
@@ -122,6 +122,156 @@
         "internal/cli/status.go",
         "internal/cli/status_test.go",
         "internal/core/model.go",
+        "internal/statusprovider/match.go",
+        "internal/statusprovider/model.go",
+        "internal/statusprovider/provider.go",
+        "internal/statusprovider/provider_test.go",
+        "internal/store/store.go",
+        "internal/store/store_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        },
+        {
+          "slug": "live-herdr-tmux-control",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 1,
+          "parent_patch_sha256": "234946cf9056fc84c65b25e36c0c980261df73c8eb3d6faf9fd9a7e4d0b00f96",
+          "parent_recipe_sha256": "98f9e296367f6dae0b9e06e16651f2a83501e1b9b4ba76e4a7fa737a52977534"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    },
+    {
+      "generation": 3,
+      "generation_id": "pg_8bfdc4699cc3",
+      "kind": "amend-fixup",
+      "reason": "Independent verification corrected Git common-root and branch matching, timeout freshness, current Herdr schema/session references, and tmux shell false positives.",
+      "fixup_of_generation": "pg_de65630914c1",
+      "patch_sha256": "ca2ff7b74f1aeb9ed8d9800f10378844fc7853da18bc3da8b190fac14fa2ba8b",
+      "git_patch_id": "97899cd9d5385333cfd8faad6b934a6ce180b9e3",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "ce9c5e7cb0eb019963ec78d71a5ac0073ddf911719930078f020488ac663a94e",
+      "canonical_patch": "",
+      "audit_patch": "patches/003-fixup.patch",
+      "base_commit": "3f5f340736cdf236e467f0134d80b416152da528",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/runtime-status-contract.md",
+        "internal/adapters/herdr.go",
+        "internal/adapters/herdr_test.go",
+        "internal/adapters/tmux.go",
+        "internal/adapters/tmux_test.go",
+        "internal/cli/status_test.go",
+        "internal/statusprovider/git_test.go",
+        "internal/statusprovider/match.go",
+        "internal/statusprovider/provider.go",
+        "internal/statusprovider/provider_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        },
+        {
+          "slug": "live-herdr-tmux-control",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 1,
+          "parent_patch_sha256": "234946cf9056fc84c65b25e36c0c980261df73c8eb3d6faf9fd9a7e4d0b00f96",
+          "parent_recipe_sha256": "98f9e296367f6dae0b9e06e16651f2a83501e1b9b4ba76e4a7fa737a52977534"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    },
+    {
+      "generation": 4,
+      "generation_id": "pg_1bbd6e98ce18",
+      "kind": "amend-refresh",
+      "patch_sha256": "4c157445d7a1890541952337c96a51f1a9d7d6e4efc2e94e8c4ca578fc8d7ede",
+      "git_patch_id": "39b0ee3789699aafd0d172ed93901e18a678b624",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "816f3b1e38de03513047751311c3984abe1894c32052722ef93f817e5e7eb6b8",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "patches/004-record.patch",
+      "base_commit": "3f5f340",
+      "upper": {
+        "kind": "commit",
+        "ref": "HEAD",
+        "commit": "d377a530119f5ebe97e0236ca8258a5227f7b921"
+      },
+      "capture": {
+        "mode": "committed-range",
+        "pathspecs": [
+          "CHANGELOG.md",
+          "README.md",
+          "docs/cheatsheet.md",
+          "docs/roadmap.md",
+          "docs/runtime-status-contract.md",
+          "internal/adapters/herdr.go",
+          "internal/adapters/herdr_test.go",
+          "internal/adapters/scanner.go",
+          "internal/adapters/tmux.go",
+          "internal/adapters/tmux_test.go",
+          "internal/cli/root.go",
+          "internal/cli/scan_runtime_test.go",
+          "internal/cli/status.go",
+          "internal/cli/status_test.go",
+          "internal/core/model.go",
+          "internal/statusprovider/",
+          "internal/store/store.go",
+          "internal/store/store_test.go"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "docs/runtime-status-contract.md",
+        "internal/adapters/herdr.go",
+        "internal/adapters/herdr_test.go",
+        "internal/adapters/scanner.go",
+        "internal/adapters/tmux.go",
+        "internal/adapters/tmux_test.go",
+        "internal/cli/root.go",
+        "internal/cli/scan_runtime_test.go",
+        "internal/cli/status.go",
+        "internal/cli/status_test.go",
+        "internal/core/model.go",
+        "internal/statusprovider/git_test.go",
         "internal/statusprovider/match.go",
         "internal/statusprovider/model.go",
         "internal/statusprovider/provider.go",

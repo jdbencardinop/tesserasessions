@@ -1,0 +1,939 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e12b795..3e25f07 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,5 +9,8 @@ All notable changes to `tesserasessions` will be documented in this file.
+ - Add the side-effect-free `tss status --json` batch runtime provider contract
+   with explicit freshness, match evidence, raw observations, and separate
+   runtime-presence and agent-state aggregates.
++- Resolve linked worktrees to their common Git repository, reject contradictory
++  branch hints, recognize the current Herdr schema, and exclude ordinary tmux
++  shells from agent status.
+ - Reconcile persisted Herdr/tmux runtime snapshots after successful scans.
+ - Add tpatch-tracked roadmap metadata and project documentation.
+diff --git a/README.md b/README.md
+index d0e44dd..0a53220 100644
+--- a/README.md
++++ b/README.md
+@@ -142,8 +142,10 @@ Initial adapters:
+ 
+ - `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
+ - `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
+-- `herdr`: uses `herdr agent list --json` when Herdr is installed and running, preserving agent target and pane IDs for live controls.
+-- `tmux`: uses `tmux list-panes -a` when a tmux server is running.
++- `herdr`: uses the default JSON from `herdr agent list` when Herdr is installed
++  and running, preserving agent target, pane IDs, and `agent_status`.
++- `tmux`: uses `tmux list-panes -a` and reports only panes whose foreground
++  command identifies a supported coding agent.
+ 
+ The inventory database lives at:
+ 
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index 87dd395..44907c5 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -191,8 +191,8 @@ tss --db /tmp/tss.db list
+ | --- | --- |
+ | `claude` | `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
+ | `copilot` | `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
+-| `herdr` | `herdr agent list --json` |
+-| `tmux` | `tmux list-panes -a` |
++| `herdr` | Default JSON from `herdr agent list` |
++| `tmux` | Recognized coding-agent panes from `tmux list-panes -a` |
+ 
+ ## tpatch feature workflow
+ 
+diff --git a/docs/runtime-status-contract.md b/docs/runtime-status-contract.md
+index a787007..696d47a 100644
+--- a/docs/runtime-status-contract.md
++++ b/docs/runtime-status-contract.md
+@@ -59,7 +59,8 @@ The work proceeds in parallel:
+ 
+ `query_id` is the consumer's opaque correlation key. Path is evidence, not
+ identity. Git hints distinguish checkout branches that share one physical
+-repository path.
++repository path. `repo_root` is the main/common Git repository root, not a
++linked worktree's own `--show-toplevel` path.
+ 
+ ## Planned response
+ 
+@@ -137,10 +138,40 @@ erase prior evidence.
+ - Canonicalize absolute paths and resolve symlinks where possible.
+ - Treat nested foreground working directories as descendant matches.
+ - Assign a runtime to the deepest matching query path.
+-- Use repository and branch hints when physical paths are shared.
++- Use common-repository and branch hints to disambiguate equally specific or
++  physically shared paths.
++- Reject known repository/branch conflicts instead of falling back to path.
+ - Return match evidence.
+ - Leave cwd-less or unverifiable sessions unmatched.
+ 
++## Compatibility with tws v1.2.12
++
++The schemas align semantically but are intentionally independent today.
++`tws` v1.2.12 does not invoke `tss`; the future
++`tws/tss-status-enrichment` feature owns that adapter.
++
++The adapter can build one query per `tws` status entry:
++
++- `query_id`: stable workspace/feature/entry correlation key;
++- `metadata`: echoed `workspace_id`, feature, and entry name;
++- `path`: materialized worktree path, or the checkout repository path;
++- `repo_root`: common/main Git repository root;
++- `git_branch`: logical entry's real Git branch.
++
++The existing `tws` `runtime_presence` and `agent_state` axes accept the same
++semantic values. `tws` keeps its own topology, session liveness, attention
++signals, feature filtering, and generated timestamp. Integration therefore
++requires adapter code, not a replacement schema. Provider availability and
++freshness are additive top-level metadata if `tws` chooses to expose them.
++
++Merge precedence remains:
++
++- never replace a `tws`-owned live direct/tmux session with `tss` absent or
++  unknown;
++- external `tss` present can upgrade a baseline idle row to active;
++- `tss` blocked/stale can raise attention;
++- timeout, incompatibility, or missing `tss` leaves the baseline unchanged.
++
+ ## Consumer rollup
+ 
+ `tws` keeps final authority:
+diff --git a/internal/adapters/herdr.go b/internal/adapters/herdr.go
+index 780425d..ed644f6 100644
+--- a/internal/adapters/herdr.go
++++ b/internal/adapters/herdr.go
+@@ -3,6 +3,7 @@ package adapters
+ import (
+ 	"context"
+ 	"encoding/json"
++	"fmt"
+ 	"os/exec"
+ 	"strings"
+ 	"time"
+@@ -23,7 +24,7 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 		result.Message = "herdr not found"
+ 		return result
+ 	}
+-	out, err := exec.CommandContext(ctx, "herdr", "agent", "list", "--json").Output()
++	out, err := exec.CommandContext(ctx, "herdr", herdrAgentListArgs()...).Output()
+ 	if err != nil {
+ 		if ctx.Err() != nil {
+ 			result.Err = ctx.Err()
+@@ -38,16 +39,23 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 		result.Err = err
+ 		return result
+ 	}
+-	result.SnapshotComplete = true
++	items, recognized := herdrAgentItems(payload)
++	if !recognized {
++		result.Err = fmt.Errorf("unrecognized herdr agent list response")
++		return result
++	}
+ 	now := time.Now().UTC()
+-	for _, item := range objectList(payload) {
++	for index, item := range items {
+ 		target, paneID := herdrTarget(item)
+ 		if target == "" {
+-			continue
++			result.Sessions = nil
++			result.Runtimes = nil
++			result.Err = fmt.Errorf("herdr agent list item %d has no agent or pane identity", index)
++			return result
+ 		}
+ 		cwd := firstString(item, "foreground_cwd", "cwd", "project_path", "workspace_cwd")
+ 		agent := firstNonEmpty(firstString(item, "agent", "kind", "agent_kind", "label", "display_agent"), "agent")
+-		status := normalizeStatus(firstString(item, "status", "state", "agent_state", "lifecycle_state"))
++		status := normalizeStatus(firstString(item, "agent_status", "status", "state", "agent_state", "lifecycle_state"))
+ 		if status == "" {
+ 			status = core.StatusUnknown
+ 		}
+@@ -63,8 +71,8 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 		session.LastActivityAt = now
+ 		session.CreatedAt = now
+ 		session.AttachCommand = "herdr agent attach " + core.ShellQuote(target)
+-		if ref := agentSessionRef(item); ref != "" {
+-			session.ResumeCommand = resumeCommand(agent, ref)
++		if ref, sessionAgent := agentSessionRef(item); ref != "" {
++			session.ResumeCommand = resumeCommand(firstNonEmpty(sessionAgent, agent), ref)
+ 			session.RawPath = ref
+ 		}
+ 		result.Sessions = append(result.Sessions, session)
+@@ -81,42 +89,69 @@ func (s HerdrScanner) Scan(ctx context.Context) core.ScanResult {
+ 			UpdatedAt:     now,
+ 		})
+ 	}
++	result.SnapshotComplete = true
+ 	return result
+ }
+ 
+-func objectList(v any) []map[string]any {
++func herdrAgentListArgs() []string {
++	return []string{"agent", "list"}
++}
++
++func herdrAgentItems(v any) ([]map[string]any, bool) {
+ 	switch x := v.(type) {
+ 	case []any:
+-		return mapsFromArray(x)
++		return strictMapsFromArray(x)
+ 	case map[string]any:
+-		for _, key := range []string{"agents", "items", "data", "results", "panes", "workspaces", "tabs"} {
++		for _, key := range []string{"result", "response"} {
+ 			if nested, ok := x[key]; ok {
+-				if list := objectList(nested); len(list) > 0 {
+-					return list
+-				}
++				return herdrAgentItems(nested)
+ 			}
+ 		}
+-		for _, key := range []string{"result", "response"} {
++		for _, key := range []string{"agents", "items", "data", "results"} {
+ 			if nested, ok := x[key]; ok {
+-				if list := objectList(nested); len(list) > 0 {
+-					return list
+-				}
++				return herdrAgentItems(nested)
+ 			}
+ 		}
+-		return []map[string]any{x}
++		if isHerdrAgentRecord(x) {
++			return []map[string]any{x}, true
++		}
++		return nil, false
+ 	default:
+-		return nil
++		return nil, false
+ 	}
+ }
+ 
+-func mapsFromArray(arr []any) []map[string]any {
+-	var out []map[string]any
++func isHerdrAgentRecord(item map[string]any) bool {
++	if firstString(item, "pane_id", "paneId", "public_pane_id", "name", "agent_name", "agent_id") != "" {
++		return true
++	}
++	if firstString(item, "id") == "" {
++		return false
++	}
++	for _, key := range []string{
++		"agent_status",
++		"agent_state",
++		"lifecycle_state",
++		"foreground_cwd",
++		"agent_session",
++	} {
++		if _, ok := item[key]; ok {
++			return true
++		}
++	}
++	return false
++}
++
++func strictMapsFromArray(arr []any) ([]map[string]any, bool) {
++	out := make([]map[string]any, 0, len(arr))
+ 	for _, item := range arr {
+-		if m, ok := item.(map[string]any); ok {
+-			out = append(out, m)
++		m, ok := item.(map[string]any)
++		if !ok {
++			return nil, false
+ 		}
++		out = append(out, m)
+ 	}
+-	return out
++	return out, true
+ }
+ 
+ func firstString(m map[string]any, keys ...string) string {
+@@ -135,7 +170,7 @@ func stringFromAny(v any) string {
+ 	case string:
+ 		return strings.TrimSpace(t)
+ 	case map[string]any:
+-		return firstString(t, "pane_id", "id", "name", "label", "path", "state", "status", "cwd")
++		return firstString(t, "pane_id", "id", "name", "label", "path", "agent_status", "state", "status", "cwd")
+ 	default:
+ 		return ""
+ 	}
+@@ -156,14 +191,15 @@ func herdrTarget(item map[string]any) (target, paneID string) {
+ 	return target, paneID
+ }
+ 
+-func agentSessionRef(item map[string]any) string {
++func agentSessionRef(item map[string]any) (ref, agent string) {
+ 	if ref := firstString(item, "agent_session_id", "session_id", "agent_session_path", "session_path"); ref != "" {
+-		return ref
++		return ref, ""
+ 	}
+ 	if nested, ok := item["agent_session"].(map[string]any); ok {
+-		return firstString(nested, "id", "session_id", "path", "agent_session_path")
++		return firstString(nested, "value", "id", "session_id", "path", "agent_session_path"),
++			firstString(nested, "agent")
+ 	}
+-	return ""
++	return "", ""
+ }
+ 
+ func resumeCommand(agent, ref string) string {
+diff --git a/internal/adapters/herdr_test.go b/internal/adapters/herdr_test.go
+index b106b07..157ffe9 100644
+--- a/internal/adapters/herdr_test.go
++++ b/internal/adapters/herdr_test.go
+@@ -1,7 +1,11 @@
+ package adapters
+ 
+ import (
++	"context"
+ 	"encoding/json"
++	"os"
++	"path/filepath"
++	"runtime"
+ 	"testing"
+ )
+ 
+@@ -14,9 +18,14 @@ func TestObjectListReadsNestedResultAgents(t *testing.T) {
+ 					"name": "auth-agent",
+ 					"pane_id": "w1:p1",
+ 					"kind": "claude",
+-					"state": "blocked",
++					"agent_status": "blocked",
+ 					"foreground_cwd": "/repo",
+-					"agent_session": {"id": "sess-1"}
++					"agent_session": {
++						"source": "hook",
++						"agent": "claude",
++						"kind": "id",
++						"value": "sess-1"
++					}
+ 				}
+ 			]
+ 		}
+@@ -24,7 +33,10 @@ func TestObjectListReadsNestedResultAgents(t *testing.T) {
+ 	if err := json.Unmarshal(data, &payload); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	items := objectList(payload)
++	items, recognized := herdrAgentItems(payload)
++	if !recognized {
++		t.Fatal("expected recognized Herdr response")
++	}
+ 	if len(items) != 1 {
+ 		t.Fatalf("expected 1 item, got %d", len(items))
+ 	}
+@@ -35,11 +47,62 @@ func TestObjectListReadsNestedResultAgents(t *testing.T) {
+ 	if pane != "w1:p1" {
+ 		t.Fatalf("pane = %q, want w1:p1", pane)
+ 	}
+-	if got := normalizeStatus(firstString(items[0], "state")); got != "needs_attention" {
++	if got := normalizeStatus(firstString(items[0], "agent_status")); got != "needs_attention" {
+ 		t.Fatalf("status = %q", got)
+ 	}
+-	if got := agentSessionRef(items[0]); got != "sess-1" {
+-		t.Fatalf("session ref = %q", got)
++	ref, agent := agentSessionRef(items[0])
++	if ref != "sess-1" || agent != "claude" {
++		t.Fatalf("session ref = %q, agent = %q", ref, agent)
++	}
++}
++
++func TestHerdrAgentItemsRecognizesExplicitEmptyList(t *testing.T) {
++	items, recognized := herdrAgentItems(map[string]any{
++		"result": map[string]any{"agents": []any{}},
++	})
++	if !recognized || len(items) != 0 {
++		t.Fatalf("explicit empty list not recognized: recognized=%v items=%v", recognized, items)
++	}
++}
++
++func TestHerdrAgentItemsRejectsUnknownShape(t *testing.T) {
++	if items, recognized := herdrAgentItems(map[string]any{}); recognized || items != nil {
++		t.Fatalf("unknown shape accepted: recognized=%v items=%v", recognized, items)
++	}
++	if items, recognized := herdrAgentItems(map[string]any{"id": "cli:agent:list"}); recognized || items != nil {
++		t.Fatalf("envelope id accepted as an agent: recognized=%v items=%v", recognized, items)
++	}
++}
++
++func TestHerdrAgentListUsesDefaultJSONOutput(t *testing.T) {
++	args := herdrAgentListArgs()
++	if len(args) != 2 || args[0] != "agent" || args[1] != "list" {
++		t.Fatalf("unexpected Herdr args: %v", args)
++	}
++}
++
++func TestHerdrScannerAcceptsCurrentCLIShape(t *testing.T) {
++	if runtime.GOOS == "windows" {
++		t.Skip("shell fixture is Unix-only")
++	}
++	binDir := t.TempDir()
++	script := `#!/bin/sh
++if [ "$#" -ne 2 ] || [ "$1" != "agent" ] || [ "$2" != "list" ]; then
++  exit 2
++fi
++printf '%s\n' '{"result":{"agents":[{"name":"auth-agent","pane_id":"w1:p1","kind":"claude","agent_status":"blocked","foreground_cwd":"/repo"}]}}'
++`
++	if err := os.WriteFile(filepath.Join(binDir, "herdr"), []byte(script), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
++
++	result := (HerdrScanner{}).Scan(context.Background())
++	if result.Err != nil || !result.SnapshotComplete {
++		t.Fatalf("scan failed: %+v", result)
++	}
++	if len(result.Runtimes) != 1 || result.Runtimes[0].Status != "needs_attention" {
++		t.Fatalf("unexpected runtimes: %+v", result.Runtimes)
+ 	}
+ }
+ 
+diff --git a/internal/adapters/tmux.go b/internal/adapters/tmux.go
+index 7cec435..58d63bd 100644
+--- a/internal/adapters/tmux.go
++++ b/internal/adapters/tmux.go
+@@ -61,10 +61,14 @@ func (s TmuxScanner) Scan(ctx context.Context) core.ScanResult {
+ 		}
+ 		sessionName, windowIndex, paneIndex, paneID := parts[0], parts[1], parts[2], parts[3]
+ 		cwd, command, title := parts[4], parts[5], parts[6]
++		agent, isAgent := detectAgentCommand(command)
++		if !isAgent {
++			continue
++		}
+ 		nativeID := paneID
+ 		sess := core.NewSession("tmux", nativeID)
+ 		sess.ProjectPath = cwd
+-		sess.Agent = inferAgent(command)
++		sess.Agent = agent
+ 		sess.Title = "tmux " + sessionName + ":" + windowIndex + "." + paneIndex
+ 		if title != "" && title != command {
+ 			sess.Title += " " + core.Truncate(title, 32)
+@@ -91,17 +95,32 @@ func (s TmuxScanner) Scan(ctx context.Context) core.ScanResult {
+ 	return result
+ }
+ 
+-func inferAgent(command string) string {
+-	lower := strings.ToLower(command)
+-	for _, name := range []string{"claude", "copilot", "codex", "hermes", "opencode", "gemini", "cursor-agent", "aider"} {
+-		if strings.Contains(lower, name) {
+-			return name
+-		}
+-	}
+-	if command == "" {
+-		return "terminal"
++func detectAgentCommand(command string) (string, bool) {
++	command = strings.ToLower(strings.TrimSpace(command))
++	agents := map[string]string{
++		"aider":        "aider",
++		"amp":          "amp",
++		"claude":       "claude",
++		"cline":        "cline",
++		"codex":        "codex",
++		"copilot":      "copilot",
++		"cursor-agent": "cursor-agent",
++		"devin":        "devin",
++		"droid":        "droid",
++		"gemini":       "gemini",
++		"grok":         "grok",
++		"hermes":       "hermes",
++		"kilo":         "kilo",
++		"kimi":         "kimi",
++		"kiro":         "kiro",
++		"mastracode":   "mastracode",
++		"omp":          "omp",
++		"opencode":     "opencode",
++		"pi":           "pi",
++		"qodercli":     "qodercli",
+ 	}
+-	return command
++	agent, ok := agents[command]
++	return agent, ok
+ }
+ 
+ func isNoTmuxServer(output string) bool {
+diff --git a/internal/adapters/tmux_test.go b/internal/adapters/tmux_test.go
+new file mode 100644
+index 0000000..aef531c
+--- /dev/null
++++ b/internal/adapters/tmux_test.go
+@@ -0,0 +1,59 @@
++package adapters
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"runtime"
++	"testing"
++)
++
++func TestDetectAgentCommandRejectsOrdinaryShells(t *testing.T) {
++	for _, command := range []string{"", "zsh", "bash", "fish", "node", "python"} {
++		if agent, ok := detectAgentCommand(command); ok {
++			t.Fatalf("ordinary command %q detected as %q", command, agent)
++		}
++	}
++}
++
++func TestDetectAgentCommandRecognizesKnownAgents(t *testing.T) {
++	tests := map[string]string{
++		"claude":       "claude",
++		"copilot":      "copilot",
++		"codex":        "codex",
++		"hermes":       "hermes",
++		"cursor-agent": "cursor-agent",
++	}
++	for command, want := range tests {
++		got, ok := detectAgentCommand(command)
++		if !ok || got != want {
++			t.Fatalf("detectAgentCommand(%q) = %q, %v; want %q, true", command, got, ok, want)
++		}
++	}
++}
++
++func TestTmuxScannerIgnoresOrdinaryPanes(t *testing.T) {
++	if runtime.GOOS == "windows" {
++		t.Skip("shell fixture is Unix-only")
++	}
++	binDir := t.TempDir()
++	script := `#!/bin/sh
++printf 'work\0370\0370\037pane-shell\037/repo/shell\037zsh\037shell\0371\n'
++printf 'work\0370\0371\037pane-agent\037/repo/agent\037claude\037agent\0370\n'
++`
++	if err := os.WriteFile(filepath.Join(binDir, "tmux"), []byte(script), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
++
++	result := (TmuxScanner{}).Scan(context.Background())
++	if result.Err != nil || !result.SnapshotComplete {
++		t.Fatalf("scan failed: %+v", result)
++	}
++	if len(result.Runtimes) != 1 || result.Runtimes[0].NativeID != "pane-agent" {
++		t.Fatalf("unexpected runtimes: %+v", result.Runtimes)
++	}
++	if len(result.Sessions) != 1 || result.Sessions[0].Agent != "claude" {
++		t.Fatalf("unexpected sessions: %+v", result.Sessions)
++	}
++}
+diff --git a/internal/cli/status_test.go b/internal/cli/status_test.go
+index aa092d6..78d12e8 100644
+--- a/internal/cli/status_test.go
++++ b/internal/cli/status_test.go
+@@ -42,8 +42,8 @@ func TestStatusCommandUsesVersionedLowercaseJSONWithoutDatabase(t *testing.T) {
+ 	service.Now = func() time.Time {
+ 		return time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
+ 	}
+-	service.ResolveGit = func(context.Context, string) (string, string) {
+-		return "", ""
++	service.ResolveGit = func(context.Context, string) (string, string, error) {
++		return "", "", nil
+ 	}
+ 
+ 	cmd := newStatusCmd(service)
+diff --git a/internal/statusprovider/git_test.go b/internal/statusprovider/git_test.go
+new file mode 100644
+index 0000000..8057683
+--- /dev/null
++++ b/internal/statusprovider/git_test.go
+@@ -0,0 +1,55 @@
++package statusprovider
++
++import (
++	"context"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestResolveGitUsesCommonRepositoryRootForLinkedWorktree(t *testing.T) {
++	repo := filepath.Join(t.TempDir(), "repo")
++	worktree := filepath.Join(t.TempDir(), "worktree")
++	runGitTestCommand(t, "", "init", repo)
++	runGitTestCommand(t, repo, "config", "user.name", "Test User")
++	runGitTestCommand(t, repo, "config", "user.email", "test@example.com")
++	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("test\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	runGitTestCommand(t, repo, "add", "README.md")
++	runGitTestCommand(t, repo, "commit", "-m", "initial")
++	runGitTestCommand(t, repo, "branch", "-M", "main")
++	runGitTestCommand(t, repo, "worktree", "add", "-b", "feature/status", worktree)
++
++	root, branch, err := resolveGit(context.Background(), worktree)
++	if err != nil {
++		t.Fatal(err)
++	}
++	wantRoot, err := filepath.EvalSymlinks(repo)
++	if err != nil {
++		t.Fatal(err)
++	}
++	gotRoot, err := filepath.EvalSymlinks(root)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if gotRoot != wantRoot {
++		t.Fatalf("repo root = %q, want common root %q", gotRoot, wantRoot)
++	}
++	if branch != "feature/status" {
++		t.Fatalf("branch = %q, want feature/status", branch)
++	}
++}
++
++func runGitTestCommand(t *testing.T, dir string, args ...string) {
++	t.Helper()
++	cmd := exec.Command("git", args...)
++	if dir != "" {
++		cmd.Dir = dir
++	}
++	if out, err := cmd.CombinedOutput(); err != nil {
++		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
++	}
++}
+diff --git a/internal/statusprovider/match.go b/internal/statusprovider/match.go
+index 53e7dd2..c80bcb3 100644
+--- a/internal/statusprovider/match.go
++++ b/internal/statusprovider/match.go
+@@ -8,9 +8,9 @@ import (
+ )
+ 
+ const (
+-	matchRankDescendant = 1_000_000
+-	matchRankExact      = 2_000_000
+-	matchRankRepoBranch = 3_000_000
++	matchQualityDescendant = 1
++	matchQualityExact      = 2
++	matchQualityRepoBranch = 3
+ )
+ 
+ type preparedQuery struct {
+@@ -165,19 +165,29 @@ func candidatesForObservation(queries []preparedQuery, observation preparedObser
+ 		if len(query.errors) > 0 {
+ 			continue
+ 		}
++		queryBranch := strings.TrimSpace(query.query.GitBranch)
++		repoConflict := query.repoRootKey != "" &&
++			observation.repoRootKey != "" &&
++			observation.repoRootKey != query.repoRootKey
++		branchConflict := queryBranch != "" &&
++			observation.GitBranch != "" &&
++			observation.GitBranch != queryBranch
++		if repoConflict || branchConflict {
++			continue
++		}
+ 		pathCompatible := query.pathKey == "" ||
+ 			observation.pathKey == query.pathKey ||
+ 			pathWithin(observation.pathKey, query.pathKey)
+ 		if query.repoRootKey != "" &&
+-			strings.TrimSpace(query.query.GitBranch) != "" &&
++			queryBranch != "" &&
+ 			observation.repoRootKey == query.repoRootKey &&
+-			observation.GitBranch == strings.TrimSpace(query.query.GitBranch) &&
++			observation.GitBranch == queryBranch &&
+ 			pathCompatible {
+ 			candidates = append(candidates, matchCandidate{
+ 				queryIndex:  query.index,
+ 				matchType:   "repo_branch",
+ 				matchedPath: observation.Path,
+-				rank:        matchRankRepoBranch + pathSpecificity(query.pathKey),
++				rank:        matchRank(query.pathKey, matchQualityRepoBranch),
+ 			})
+ 			continue
+ 		}
+@@ -189,7 +199,7 @@ func candidatesForObservation(queries []preparedQuery, observation preparedObser
+ 				queryIndex:  query.index,
+ 				matchType:   "exact_path",
+ 				matchedPath: observation.Path,
+-				rank:        matchRankExact + pathSpecificity(query.pathKey),
++				rank:        matchRank(query.pathKey, matchQualityExact),
+ 			})
+ 			continue
+ 		}
+@@ -198,7 +208,7 @@ func candidatesForObservation(queries []preparedQuery, observation preparedObser
+ 				queryIndex:  query.index,
+ 				matchType:   "descendant_path",
+ 				matchedPath: observation.Path,
+-				rank:        matchRankDescendant + pathSpecificity(query.pathKey),
++				rank:        matchRank(query.pathKey, matchQualityDescendant),
+ 			})
+ 		}
+ 	}
+@@ -240,6 +250,10 @@ func pathSpecificity(path string) int {
+ 	return len(path)
+ }
+ 
++func matchRank(path string, quality int) int {
++	return pathSpecificity(path)*10 + quality
++}
++
+ func aggregatePresence(observations []RuntimeObservation) RuntimePresence {
+ 	best := RuntimeUnknown
+ 	for _, observation := range observations {
+diff --git a/internal/statusprovider/provider.go b/internal/statusprovider/provider.go
+index a6e999e..15f4868 100644
+--- a/internal/statusprovider/provider.go
++++ b/internal/statusprovider/provider.go
+@@ -4,6 +4,7 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"os/exec"
++	"path/filepath"
+ 	"sort"
+ 	"strings"
+ 	"sync"
+@@ -18,7 +19,7 @@ const (
+ 	defaultFreshFor     = 10 * time.Second
+ )
+ 
+-type GitResolver func(context.Context, string) (repoRoot, branch string)
++type GitResolver func(context.Context, string) (repoRoot, branch string, err error)
+ 
+ type Service struct {
+ 	Scanners   []adapters.Scanner
+@@ -52,11 +53,22 @@ func (s *Service) Query(ctx context.Context, request Request) (Response, error)
+ 		providers = append(providers, probe.provider)
+ 		observations = append(observations, probe.observations...)
+ 	}
++	freshUntil := observedAt.Add(s.FreshFor)
++	for _, provider := range providers {
++		if provider.FreshUntil.Before(freshUntil) {
++			freshUntil = provider.FreshUntil
++		}
++	}
++	for _, observation := range observations {
++		if observation.ExpiresAt.Before(freshUntil) {
++			freshUntil = observation.ExpiresAt
++		}
++	}
+ 
+ 	return Response{
+ 		SchemaVersion: SchemaVersion,
+ 		ObservedAt:    observedAt,
+-		FreshUntil:    observedAt.Add(s.FreshFor),
++		FreshUntil:    freshUntil,
+ 		Providers:     providers,
+ 		Results:       matchQueries(request.Queries, providers, observations),
+ 	}, nil
+@@ -128,16 +140,23 @@ func (s *Service) probeOne(parent context.Context, index int, scanner adapters.S
+ 
+ 	observations := make([]RuntimeObservation, 0, len(scan.Runtimes))
+ 	for _, runtime := range scan.Runtimes {
+-		observations = append(observations, s.runtimeObservation(ctx, runtime, observedAt))
++		observation, err := s.runtimeObservation(ctx, runtime, observedAt)
++		observations = append(observations, observation)
++		if err != nil {
++			provider.Available = false
++			provider.Error = "runtime metadata enrichment failed: " + err.Error()
++			break
++		}
+ 	}
+ 	return probeOutput{index: index, provider: provider, observations: observations}
+ }
+ 
+-func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeInstance, observedAt time.Time) RuntimeObservation {
++func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeInstance, observedAt time.Time) (RuntimeObservation, error) {
+ 	path, _ := canonicalPath(runtime.ProjectPath)
+ 	repoRoot, branch := "", ""
++	var enrichmentErr error
+ 	if path != "" {
+-		repoRoot, branch = s.ResolveGit(ctx, path)
++		repoRoot, branch, enrichmentErr = s.ResolveGit(ctx, path)
+ 		repoRoot, _ = canonicalPath(repoRoot)
+ 	}
+ 
+@@ -161,7 +180,7 @@ func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeIn
+ 		AgentState:      agentState(runtime.Status),
+ 		ObservedAt:      observedAt,
+ 		ExpiresAt:       observedAt.Add(s.FreshFor),
+-	}
++	}, enrichmentErr
+ }
+ 
+ func agentState(status string) AgentState {
+@@ -179,22 +198,29 @@ func agentState(status string) AgentState {
+ 	}
+ }
+ 
+-func resolveGit(ctx context.Context, path string) (string, string) {
+-	root := gitOutput(ctx, path, "rev-parse", "--show-toplevel")
+-	if root == "" {
+-		return "", ""
++func resolveGit(ctx context.Context, path string) (string, string, error) {
++	commonDir, err := gitOutput(ctx, path, "rev-parse", "--path-format=absolute", "--git-common-dir")
++	if err != nil {
++		if ctx.Err() != nil {
++			return "", "", ctx.Err()
++		}
++		return "", "", nil
++	}
++	root := filepath.Dir(commonDir)
++	branch, err := gitOutput(ctx, path, "symbolic-ref", "--quiet", "--short", "HEAD")
++	if err != nil && ctx.Err() != nil {
++		return root, "", ctx.Err()
+ 	}
+-	branch := gitOutput(ctx, path, "symbolic-ref", "--quiet", "--short", "HEAD")
+-	return root, branch
++	return root, branch, nil
+ }
+ 
+-func gitOutput(ctx context.Context, path string, args ...string) string {
++func gitOutput(ctx context.Context, path string, args ...string) (string, error) {
+ 	commandArgs := append([]string{"-C", path}, args...)
+ 	out, err := exec.CommandContext(ctx, "git", commandArgs...).Output()
+ 	if err != nil {
+-		return ""
++		return "", err
+ 	}
+-	return strings.TrimSpace(string(out))
++	return strings.TrimSpace(string(out)), nil
+ }
+ 
+ func validateEnvelope(request Request) error {
+diff --git a/internal/statusprovider/provider_test.go b/internal/statusprovider/provider_test.go
+index 98e5d83..c8bf2e3 100644
+--- a/internal/statusprovider/provider_test.go
++++ b/internal/statusprovider/provider_test.go
+@@ -43,8 +43,8 @@ func completeScanner(name string, runtimes ...core.RuntimeInstance) adapters.Sca
+ func testService(scanners ...adapters.Scanner) *Service {
+ 	service := NewService(scanners)
+ 	service.Now = func() time.Time { return fixedTime }
+-	service.ResolveGit = func(context.Context, string) (string, string) {
+-		return "", ""
++	service.ResolveGit = func(context.Context, string) (string, string, error) {
++		return "", "", nil
+ 	}
+ 	return service
+ }
+@@ -57,8 +57,8 @@ func TestServiceUsesBranchHintForSharedCheckoutPath(t *testing.T) {
+ 		ProjectPath: "/repo",
+ 		Status:      core.StatusNeedsAttention,
+ 	}))
+-	service.ResolveGit = func(context.Context, string) (string, string) {
+-		return "/repo", "feature/a"
++	service.ResolveGit = func(context.Context, string) (string, string, error) {
++		return "/repo", "feature/a", nil
+ 	}
+ 
+ 	metadata := json.RawMessage(`{"workspace_id":"ws-1"}`)
+@@ -111,8 +111,8 @@ func TestBranchHintDoesNotOverrideSiblingPathContainment(t *testing.T) {
+ 			Status:      core.StatusIdle,
+ 		},
+ 	))
+-	service.ResolveGit = func(context.Context, string) (string, string) {
+-		return "/repo", "main"
++	service.ResolveGit = func(context.Context, string) (string, string, error) {
++		return "/repo", "main", nil
+ 	}
+ 
+ 	response, err := service.Query(context.Background(), Request{
+@@ -133,6 +133,66 @@ func TestBranchHintDoesNotOverrideSiblingPathContainment(t *testing.T) {
+ 	}
+ }
+ 
++func TestKnownBranchConflictDoesNotFallbackToPath(t *testing.T) {
++	service := testService(completeScanner("herdr", core.RuntimeInstance{
++		ID:          "branch-a-runtime",
++		Backend:     "herdr",
++		NativeID:    "branch-a",
++		ProjectPath: "/repo",
++		Status:      core.StatusWorking,
++	}))
++	service.ResolveGit = func(context.Context, string) (string, string, error) {
++		return "/repo", "feature/a", nil
++	}
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{{
++			QueryID:   "branch-b",
++			Path:      "/repo",
++			RepoRoot:  "/repo",
++			GitBranch: "feature/b",
++		}},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	result := response.Results[0]
++	if result.RuntimePresence != RuntimeAbsent || len(result.Runtimes) != 0 {
++		t.Fatalf("conflicting branch matched by path fallback: %+v", result)
++	}
++}
++
++func TestDeepestPathBeatsBroadRepoBranchMatch(t *testing.T) {
++	service := testService(completeScanner("herdr", core.RuntimeInstance{
++		ID:          "frontend-runtime",
++		Backend:     "herdr",
++		NativeID:    "frontend",
++		ProjectPath: "/repo/frontend/src",
++		Status:      core.StatusWorking,
++	}))
++	service.ResolveGit = func(context.Context, string) (string, string, error) {
++		return "/repo", "main", nil
++	}
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{
++			{QueryID: "repo", Path: "/repo", RepoRoot: "/repo", GitBranch: "main"},
++			{QueryID: "frontend", Path: "/repo/frontend"},
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if response.Results[0].RuntimePresence != RuntimeAbsent {
++		t.Fatalf("broad repo query stole nested runtime: %+v", response.Results[0])
++	}
++	if got := response.Results[1].Runtimes; len(got) != 1 || got[0].NativeID != "frontend" {
++		t.Fatalf("nested query did not receive runtime: %+v", response.Results[1])
++	}
++}
++
+ func TestServiceAssignsRuntimeToDeepestPath(t *testing.T) {
+ 	service := testService(completeScanner("tmux", core.RuntimeInstance{
+ 		ID:          "tmux-1",
+@@ -307,6 +367,43 @@ func TestServiceBoundsProviderTimeout(t *testing.T) {
+ 	}
+ }
+ 
++func TestGitEnrichmentTimeoutKeepsRepoBranchQueryUnknown(t *testing.T) {
++	service := testService(completeScanner("herdr", core.RuntimeInstance{
++		ID:          "runtime",
++		Backend:     "herdr",
++		NativeID:    "runtime",
++		ProjectPath: "/repo",
++		Status:      core.StatusWorking,
++	}))
++	service.Timeout = 10 * time.Millisecond
++	service.ResolveGit = func(ctx context.Context, path string) (string, string, error) {
++		<-ctx.Done()
++		return "", "", ctx.Err()
++	}
++
++	response, err := service.Query(context.Background(), Request{
++		SchemaVersion: SchemaVersion,
++		Queries: []Query{{
++			QueryID:   "repo-branch",
++			RepoRoot:  "/repo",
++			GitBranch: "main",
++		}},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if response.Providers[0].Available || response.Providers[0].Error == "" {
++		t.Fatalf("enrichment timeout not surfaced: %+v", response.Providers[0])
++	}
++	result := response.Results[0]
++	if result.RuntimePresence != RuntimeUnknown || len(result.Errors) == 0 {
++		t.Fatalf("repo/branch-only query should remain unknown: %+v", result)
++	}
++	if response.FreshUntil.After(response.Providers[0].FreshUntil) {
++		t.Fatalf("envelope freshness exceeds provider freshness: %s > %s", response.FreshUntil, response.Providers[0].FreshUntil)
++	}
++}
++
+ func TestServiceResolvesSymlinkQueryPath(t *testing.T) {
+ 	root := t.TempDir()
+ 	realPath := filepath.Join(root, "real")
