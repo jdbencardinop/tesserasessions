@@ -191,8 +191,8 @@ tss --db /tmp/tss.db list
 | --- | --- |
 | `claude` | `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
 | `copilot` | `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
-| `herdr` | `herdr agent list --json` |
-| `tmux` | `tmux list-panes -a` |
+| `herdr` | Default JSON from `herdr agent list` |
+| `tmux` | Recognized coding-agent panes from `tmux list-panes -a` |
 
 ## tpatch feature workflow
 

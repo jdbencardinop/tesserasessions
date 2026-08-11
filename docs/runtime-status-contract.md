@@ -59,7 +59,8 @@ The work proceeds in parallel:
 
 `query_id` is the consumer's opaque correlation key. Path is evidence, not
 identity. Git hints distinguish checkout branches that share one physical
-repository path.
+repository path. `repo_root` is the main/common Git repository root, not a
+linked worktree's own `--show-toplevel` path.
 
 ## Planned response
 
@@ -137,9 +138,39 @@ erase prior evidence.
 - Canonicalize absolute paths and resolve symlinks where possible.
 - Treat nested foreground working directories as descendant matches.
 - Assign a runtime to the deepest matching query path.
-- Use repository and branch hints when physical paths are shared.
+- Use common-repository and branch hints to disambiguate equally specific or
+  physically shared paths.
+- Reject known repository/branch conflicts instead of falling back to path.
 - Return match evidence.
 - Leave cwd-less or unverifiable sessions unmatched.
+
+## Compatibility with tws v1.2.12
+
+The schemas align semantically but are intentionally independent today.
+`tws` v1.2.12 does not invoke `tss`; the future
+`tws/tss-status-enrichment` feature owns that adapter.
+
+The adapter can build one query per `tws` status entry:
+
+- `query_id`: stable workspace/feature/entry correlation key;
+- `metadata`: echoed `workspace_id`, feature, and entry name;
+- `path`: materialized worktree path, or the checkout repository path;
+- `repo_root`: common/main Git repository root;
+- `git_branch`: logical entry's real Git branch.
+
+The existing `tws` `runtime_presence` and `agent_state` axes accept the same
+semantic values. `tws` keeps its own topology, session liveness, attention
+signals, feature filtering, and generated timestamp. Integration therefore
+requires adapter code, not a replacement schema. Provider availability and
+freshness are additive top-level metadata if `tws` chooses to expose them.
+
+Merge precedence remains:
+
+- never replace a `tws`-owned live direct/tmux session with `tss` absent or
+  unknown;
+- external `tss` present can upgrade a baseline idle row to active;
+- `tss` blocked/stale can raise attention;
+- timeout, incompatibility, or missing `tss` leaves the baseline unchanged.
 
 ## Consumer rollup
 

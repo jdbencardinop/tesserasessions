@@ -61,10 +61,14 @@ func (s TmuxScanner) Scan(ctx context.Context) core.ScanResult {
 		}
 		sessionName, windowIndex, paneIndex, paneID := parts[0], parts[1], parts[2], parts[3]
 		cwd, command, title := parts[4], parts[5], parts[6]
+		agent, isAgent := detectAgentCommand(command)
+		if !isAgent {
+			continue
+		}
 		nativeID := paneID
 		sess := core.NewSession("tmux", nativeID)
 		sess.ProjectPath = cwd
-		sess.Agent = inferAgent(command)
+		sess.Agent = agent
 		sess.Title = "tmux " + sessionName + ":" + windowIndex + "." + paneIndex
 		if title != "" && title != command {
 			sess.Title += " " + core.Truncate(title, 32)
@@ -91,17 +95,32 @@ func (s TmuxScanner) Scan(ctx context.Context) core.ScanResult {
 	return result
 }
 
-func inferAgent(command string) string {
-	lower := strings.ToLower(command)
-	for _, name := range []string{"claude", "copilot", "codex", "hermes", "opencode", "gemini", "cursor-agent", "aider"} {
-		if strings.Contains(lower, name) {
-			return name
-		}
+func detectAgentCommand(command string) (string, bool) {
+	command = strings.ToLower(strings.TrimSpace(command))
+	agents := map[string]string{
+		"aider":        "aider",
+		"amp":          "amp",
+		"claude":       "claude",
+		"cline":        "cline",
+		"codex":        "codex",
+		"copilot":      "copilot",
+		"cursor-agent": "cursor-agent",
+		"devin":        "devin",
+		"droid":        "droid",
+		"gemini":       "gemini",
+		"grok":         "grok",
+		"hermes":       "hermes",
+		"kilo":         "kilo",
+		"kimi":         "kimi",
+		"kiro":         "kiro",
+		"mastracode":   "mastracode",
+		"omp":          "omp",
+		"opencode":     "opencode",
+		"pi":           "pi",
+		"qodercli":     "qodercli",
 	}
-	if command == "" {
-		return "terminal"
-	}
-	return command
+	agent, ok := agents[command]
+	return agent, ok
 }
 
 func isNoTmuxServer(output string) bool {

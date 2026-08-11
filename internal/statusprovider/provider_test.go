@@ -43,8 +43,8 @@ func completeScanner(name string, runtimes ...core.RuntimeInstance) adapters.Sca
 func testService(scanners ...adapters.Scanner) *Service {
 	service := NewService(scanners)
 	service.Now = func() time.Time { return fixedTime }
-	service.ResolveGit = func(context.Context, string) (string, string) {
-		return "", ""
+	service.ResolveGit = func(context.Context, string) (string, string, error) {
+		return "", "", nil
 	}
 	return service
 }
@@ -57,8 +57,8 @@ func TestServiceUsesBranchHintForSharedCheckoutPath(t *testing.T) {
 		ProjectPath: "/repo",
 		Status:      core.StatusNeedsAttention,
 	}))
-	service.ResolveGit = func(context.Context, string) (string, string) {
-		return "/repo", "feature/a"
+	service.ResolveGit = func(context.Context, string) (string, string, error) {
+		return "/repo", "feature/a", nil
 	}
 
 	metadata := json.RawMessage(`{"workspace_id":"ws-1"}`)
@@ -111,8 +111,8 @@ func TestBranchHintDoesNotOverrideSiblingPathContainment(t *testing.T) {
 			Status:      core.StatusIdle,
 		},
 	))
-	service.ResolveGit = func(context.Context, string) (string, string) {
-		return "/repo", "main"
+	service.ResolveGit = func(context.Context, string) (string, string, error) {
+		return "/repo", "main", nil
 	}
 
 	response, err := service.Query(context.Background(), Request{
@@ -130,6 +130,66 @@ func TestBranchHintDoesNotOverrideSiblingPathContainment(t *testing.T) {
 	}
 	if got := response.Results[1].Runtimes; len(got) != 1 || got[0].NativeID != "backend" {
 		t.Fatalf("backend received wrong runtimes: %+v", got)
+	}
+}
+
+func TestKnownBranchConflictDoesNotFallbackToPath(t *testing.T) {
+	service := testService(completeScanner("herdr", core.RuntimeInstance{
+		ID:          "branch-a-runtime",
+		Backend:     "herdr",
+		NativeID:    "branch-a",
+		ProjectPath: "/repo",
+		Status:      core.StatusWorking,
+	}))
+	service.ResolveGit = func(context.Context, string) (string, string, error) {
+		return "/repo", "feature/a", nil
+	}
+
+	response, err := service.Query(context.Background(), Request{
+		SchemaVersion: SchemaVersion,
+		Queries: []Query{{
+			QueryID:   "branch-b",
+			Path:      "/repo",
+			RepoRoot:  "/repo",
+			GitBranch: "feature/b",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := response.Results[0]
+	if result.RuntimePresence != RuntimeAbsent || len(result.Runtimes) != 0 {
+		t.Fatalf("conflicting branch matched by path fallback: %+v", result)
+	}
+}
+
+func TestDeepestPathBeatsBroadRepoBranchMatch(t *testing.T) {
+	service := testService(completeScanner("herdr", core.RuntimeInstance{
+		ID:          "frontend-runtime",
+		Backend:     "herdr",
+		NativeID:    "frontend",
+		ProjectPath: "/repo/frontend/src",
+		Status:      core.StatusWorking,
+	}))
+	service.ResolveGit = func(context.Context, string) (string, string, error) {
+		return "/repo", "main", nil
+	}
+
+	response, err := service.Query(context.Background(), Request{
+		SchemaVersion: SchemaVersion,
+		Queries: []Query{
+			{QueryID: "repo", Path: "/repo", RepoRoot: "/repo", GitBranch: "main"},
+			{QueryID: "frontend", Path: "/repo/frontend"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Results[0].RuntimePresence != RuntimeAbsent {
+		t.Fatalf("broad repo query stole nested runtime: %+v", response.Results[0])
+	}
+	if got := response.Results[1].Runtimes; len(got) != 1 || got[0].NativeID != "frontend" {
+		t.Fatalf("nested query did not receive runtime: %+v", response.Results[1])
 	}
 }
 
@@ -304,6 +364,43 @@ func TestServiceBoundsProviderTimeout(t *testing.T) {
 	}
 	if response.Providers[0].Available || response.Providers[0].Error == "" {
 		t.Fatalf("timeout not surfaced: %+v", response.Providers[0])
+	}
+}
+
+func TestGitEnrichmentTimeoutKeepsRepoBranchQueryUnknown(t *testing.T) {
+	service := testService(completeScanner("herdr", core.RuntimeInstance{
+		ID:          "runtime",
+		Backend:     "herdr",
+		NativeID:    "runtime",
+		ProjectPath: "/repo",
+		Status:      core.StatusWorking,
+	}))
+	service.Timeout = 10 * time.Millisecond
+	service.ResolveGit = func(ctx context.Context, path string) (string, string, error) {
+		<-ctx.Done()
+		return "", "", ctx.Err()
+	}
+
+	response, err := service.Query(context.Background(), Request{
+		SchemaVersion: SchemaVersion,
+		Queries: []Query{{
+			QueryID:   "repo-branch",
+			RepoRoot:  "/repo",
+			GitBranch: "main",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Providers[0].Available || response.Providers[0].Error == "" {
+		t.Fatalf("enrichment timeout not surfaced: %+v", response.Providers[0])
+	}
+	result := response.Results[0]
+	if result.RuntimePresence != RuntimeUnknown || len(result.Errors) == 0 {
+		t.Fatalf("repo/branch-only query should remain unknown: %+v", result)
+	}
+	if response.FreshUntil.After(response.Providers[0].FreshUntil) {
+		t.Fatalf("envelope freshness exceeds provider freshness: %s > %s", response.FreshUntil, response.Providers[0].FreshUntil)
 	}
 }
 

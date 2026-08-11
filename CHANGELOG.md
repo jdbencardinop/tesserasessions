@@ -9,5 +9,8 @@ All notable changes to `tesserasessions` will be documented in this file.
 - Add the side-effect-free `tss status --json` batch runtime provider contract
   with explicit freshness, match evidence, raw observations, and separate
   runtime-presence and agent-state aggregates.
+- Resolve linked worktrees to their common Git repository, reject contradictory
+  branch hints, recognize the current Herdr schema, and exclude ordinary tmux
+  shells from agent status.
 - Reconcile persisted Herdr/tmux runtime snapshots after successful scans.
 - Add tpatch-tracked roadmap metadata and project documentation.

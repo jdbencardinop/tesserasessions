@@ -42,8 +42,8 @@ func TestStatusCommandUsesVersionedLowercaseJSONWithoutDatabase(t *testing.T) {
 	service.Now = func() time.Time {
 		return time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
 	}
-	service.ResolveGit = func(context.Context, string) (string, string) {
-		return "", ""
+	service.ResolveGit = func(context.Context, string) (string, string, error) {
+		return "", "", nil
 	}
 
 	cmd := newStatusCmd(service)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -18,7 +19,7 @@ const (
 	defaultFreshFor     = 10 * time.Second
 )
 
-type GitResolver func(context.Context, string) (repoRoot, branch string)
+type GitResolver func(context.Context, string) (repoRoot, branch string, err error)
 
 type Service struct {
 	Scanners   []adapters.Scanner
@@ -52,11 +53,22 @@ func (s *Service) Query(ctx context.Context, request Request) (Response, error) 
 		providers = append(providers, probe.provider)
 		observations = append(observations, probe.observations...)
 	}
+	freshUntil := observedAt.Add(s.FreshFor)
+	for _, provider := range providers {
+		if provider.FreshUntil.Before(freshUntil) {
+			freshUntil = provider.FreshUntil
+		}
+	}
+	for _, observation := range observations {
+		if observation.ExpiresAt.Before(freshUntil) {
+			freshUntil = observation.ExpiresAt
+		}
+	}
 
 	return Response{
 		SchemaVersion: SchemaVersion,
 		ObservedAt:    observedAt,
-		FreshUntil:    observedAt.Add(s.FreshFor),
+		FreshUntil:    freshUntil,
 		Providers:     providers,
 		Results:       matchQueries(request.Queries, providers, observations),
 	}, nil
@@ -128,16 +140,23 @@ func (s *Service) probeOne(parent context.Context, index int, scanner adapters.S
 
 	observations := make([]RuntimeObservation, 0, len(scan.Runtimes))
 	for _, runtime := range scan.Runtimes {
-		observations = append(observations, s.runtimeObservation(ctx, runtime, observedAt))
+		observation, err := s.runtimeObservation(ctx, runtime, observedAt)
+		observations = append(observations, observation)
+		if err != nil {
+			provider.Available = false
+			provider.Error = "runtime metadata enrichment failed: " + err.Error()
+			break
+		}
 	}
 	return probeOutput{index: index, provider: provider, observations: observations}
 }
 
-func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeInstance, observedAt time.Time) RuntimeObservation {
+func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeInstance, observedAt time.Time) (RuntimeObservation, error) {
 	path, _ := canonicalPath(runtime.ProjectPath)
 	repoRoot, branch := "", ""
+	var enrichmentErr error
 	if path != "" {
-		repoRoot, branch = s.ResolveGit(ctx, path)
+		repoRoot, branch, enrichmentErr = s.ResolveGit(ctx, path)
 		repoRoot, _ = canonicalPath(repoRoot)
 	}
 
@@ -161,7 +180,7 @@ func (s *Service) runtimeObservation(ctx context.Context, runtime core.RuntimeIn
 		AgentState:      agentState(runtime.Status),
 		ObservedAt:      observedAt,
 		ExpiresAt:       observedAt.Add(s.FreshFor),
-	}
+	}, enrichmentErr
 }
 
 func agentState(status string) AgentState {
@@ -179,22 +198,29 @@ func agentState(status string) AgentState {
 	}
 }
 
-func resolveGit(ctx context.Context, path string) (string, string) {
-	root := gitOutput(ctx, path, "rev-parse", "--show-toplevel")
-	if root == "" {
-		return "", ""
+func resolveGit(ctx context.Context, path string) (string, string, error) {
+	commonDir, err := gitOutput(ctx, path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", "", ctx.Err()
+		}
+		return "", "", nil
 	}
-	branch := gitOutput(ctx, path, "symbolic-ref", "--quiet", "--short", "HEAD")
-	return root, branch
+	root := filepath.Dir(commonDir)
+	branch, err := gitOutput(ctx, path, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil && ctx.Err() != nil {
+		return root, "", ctx.Err()
+	}
+	return root, branch, nil
 }
 
-func gitOutput(ctx context.Context, path string, args ...string) string {
+func gitOutput(ctx context.Context, path string, args ...string) (string, error) {
 	commandArgs := append([]string{"-C", path}, args...)
 	out, err := exec.CommandContext(ctx, "git", commandArgs...).Output()
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
 }
 
 func validateEnvelope(request Request) error {

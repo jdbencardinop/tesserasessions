@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	matchRankDescendant = 1_000_000
-	matchRankExact      = 2_000_000
-	matchRankRepoBranch = 3_000_000
+	matchQualityDescendant = 1
+	matchQualityExact      = 2
+	matchQualityRepoBranch = 3
 )
 
 type preparedQuery struct {
@@ -165,19 +165,29 @@ func candidatesForObservation(queries []preparedQuery, observation preparedObser
 		if len(query.errors) > 0 {
 			continue
 		}
+		queryBranch := strings.TrimSpace(query.query.GitBranch)
+		repoConflict := query.repoRootKey != "" &&
+			observation.repoRootKey != "" &&
+			observation.repoRootKey != query.repoRootKey
+		branchConflict := queryBranch != "" &&
+			observation.GitBranch != "" &&
+			observation.GitBranch != queryBranch
+		if repoConflict || branchConflict {
+			continue
+		}
 		pathCompatible := query.pathKey == "" ||
 			observation.pathKey == query.pathKey ||
 			pathWithin(observation.pathKey, query.pathKey)
 		if query.repoRootKey != "" &&
-			strings.TrimSpace(query.query.GitBranch) != "" &&
+			queryBranch != "" &&
 			observation.repoRootKey == query.repoRootKey &&
-			observation.GitBranch == strings.TrimSpace(query.query.GitBranch) &&
+			observation.GitBranch == queryBranch &&
 			pathCompatible {
 			candidates = append(candidates, matchCandidate{
 				queryIndex:  query.index,
 				matchType:   "repo_branch",
 				matchedPath: observation.Path,
-				rank:        matchRankRepoBranch + pathSpecificity(query.pathKey),
+				rank:        matchRank(query.pathKey, matchQualityRepoBranch),
 			})
 			continue
 		}
@@ -189,7 +199,7 @@ func candidatesForObservation(queries []preparedQuery, observation preparedObser
 				queryIndex:  query.index,
 				matchType:   "exact_path",
 				matchedPath: observation.Path,
-				rank:        matchRankExact + pathSpecificity(query.pathKey),
+				rank:        matchRank(query.pathKey, matchQualityExact),
 			})
 			continue
 		}
@@ -198,7 +208,7 @@ func candidatesForObservation(queries []preparedQuery, observation preparedObser
 				queryIndex:  query.index,
 				matchType:   "descendant_path",
 				matchedPath: observation.Path,
-				rank:        matchRankDescendant + pathSpecificity(query.pathKey),
+				rank:        matchRank(query.pathKey, matchQualityDescendant),
 			})
 		}
 	}
@@ -238,6 +248,10 @@ func pathWithin(child, parent string) bool {
 
 func pathSpecificity(path string) int {
 	return len(path)
+}
+
+func matchRank(path string, quality int) int {
+	return pathSpecificity(path)*10 + quality
 }
 
 func aggregatePresence(observations []RuntimeObservation) RuntimePresence {

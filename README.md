@@ -142,8 +142,10 @@ Initial adapters:
 
 - `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
 - `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
-- `herdr`: uses `herdr agent list --json` when Herdr is installed and running, preserving agent target and pane IDs for live controls.
-- `tmux`: uses `tmux list-panes -a` when a tmux server is running.
+- `herdr`: uses the default JSON from `herdr agent list` when Herdr is installed
+  and running, preserving agent target, pane IDs, and `agent_status`.
+- `tmux`: uses `tmux list-panes -a` and reports only panes whose foreground
+  command identifies a supported coding agent.
 
 The inventory database lives at:
 
