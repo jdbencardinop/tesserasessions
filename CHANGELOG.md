@@ -13,4 +13,12 @@ All notable changes to `tesserasessions` will be documented in this file.
   branch hints, recognize the current Herdr schema, and exclude ordinary tmux
   shells from agent status.
 - Reconcile persisted Herdr/tmux runtime snapshots after successful scans.
+- Read exact Claude and Copilot workspace metadata, and add read-only current
+  Hermes and OpenCode SQLite historical-session adapters.
+- Exclude Claude subagent transcripts, project Hermes compression lineages,
+  validate OpenCode relationships, reconcile authoritative history snapshots,
+  and isolate SQLite WAL/rollback-journal reads and recovery in private
+  snapshots.
+- Preserve source-store environment in exact resume commands and continue
+  Claude metadata scanning after oversized payload rows.
 - Add tpatch-tracked roadmap metadata and project documentation.

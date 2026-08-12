@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/fs"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,74 +43,173 @@ func (s ClaudeScanner) Scan(ctx context.Context) core.ScanResult {
 			continue
 		}
 		projectDir := filepath.Join(s.Root, entry.Name())
-		projectPath := core.DecodeClaudeProjectDir(entry.Name())
-		_ = filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || ctx.Err() != nil {
-				return nil
+		fallbackProjectPath := core.DecodeClaudeProjectDir(entry.Name())
+		files, err := os.ReadDir(projectDir)
+		if err != nil {
+			result.Err = err
+			return result
+		}
+		for _, file := range files {
+			if ctx.Err() != nil {
+				result.Err = ctx.Err()
+				return result
 			}
-			if d.IsDir() || filepath.Ext(path) != ".jsonl" {
-				return nil
+			if file.IsDir() || filepath.Ext(file.Name()) != ".jsonl" {
+				continue
 			}
-			info, statErr := d.Info()
+			path := filepath.Join(projectDir, file.Name())
+			info, statErr := file.Info()
 			if statErr != nil {
-				return nil
+				result.Err = statErr
+				return result
 			}
-			nativeID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+			fileSessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+			meta, metaErr := readClaudeMetadata(path, fileSessionID)
+			if metaErr != nil {
+				result.Err = metaErr
+				return result
+			}
+			nativeID := firstNonEmpty(fileSessionID, meta.SessionID)
 			if nativeID == "" {
 				nativeID = path
 			}
-			meta := readJSONLMetadata(path)
 			lastActivity := core.NonZeroTime(meta.LastTimestamp, info.ModTime())
 			created := core.NonZeroTime(meta.FirstTimestamp, info.ModTime())
+			projectPath := firstNonEmpty(meta.CWD, fallbackProjectPath)
+			title := meta.Title
+			if title == "" {
+				title = "Claude: " + core.ProjectName(projectPath)
+			}
 			session := core.NewSession("claude", nativeID)
 			session.ProjectPath = projectPath
 			session.Agent = "claude"
-			session.Title = "Claude: " + core.ProjectName(projectPath)
+			session.Title = core.Truncate(title, 120)
 			session.Status = core.StatusUnknown
 			session.LastActivityAt = lastActivity.UTC()
 			session.CreatedAt = created.UTC()
-			session.ResumeCommand = "cd " + core.ShellQuote(projectPath) + " && claude -c"
+			resume := commandWithEnv(
+				"CLAUDE_CONFIG_DIR",
+				filepath.Dir(s.Root),
+				"claude --resume "+core.ShellQuote(nativeID),
+			)
+			session.ResumeCommand = resumeInDirectory(projectPath, resume)
 			session.RawPath = path
 			result.Sessions = append(result.Sessions, session)
-			return nil
-		})
+		}
 	}
+	result.SessionSnapshotComplete = true
 	return result
 }
 
-type jsonlMetadata struct {
+type claudeMetadata struct {
+	SessionID      string
+	CWD            string
+	GitBranch      string
+	Title          string
 	FirstTimestamp time.Time
 	LastTimestamp  time.Time
 }
 
-func readJSONLMetadata(path string) jsonlMetadata {
+func readClaudeMetadata(path, expectedSessionID string) (claudeMetadata, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return jsonlMetadata{}
+		return claudeMetadata{}, err
 	}
 	defer file.Close() //nolint:errcheck
-	var meta jsonlMetadata
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+	var meta claudeMetadata
+	titleRank := 0
+	reader := bufio.NewReaderSize(file, 64*1024)
+	for {
+		line, err := readBoundedLine(reader, 2*1024*1024)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return meta, err
+		}
+		if len(line) == 0 {
 			continue
 		}
 		var row map[string]any
-		if err := json.Unmarshal([]byte(line), &row); err != nil {
+		if err := json.Unmarshal(line, &row); err != nil {
 			continue
+		}
+		rowSessionID := stringValue(row["sessionId"])
+		if expectedSessionID != "" && rowSessionID != "" && rowSessionID != expectedSessionID {
+			continue
+		}
+		if meta.SessionID == "" && rowSessionID != "" {
+			meta.SessionID = rowSessionID
+		}
+		if value := stringValue(row["cwd"]); value != "" && meta.CWD == "" {
+			meta.CWD = value
+		}
+		if value := stringValue(row["gitBranch"]); value != "" && meta.GitBranch == "" {
+			meta.GitBranch = value
+		}
+		switch stringValue(row["type"]) {
+		case "custom-title":
+			setClaudeTitle(&meta, &titleRank, stringValue(row["customTitle"]), 5)
+		case "ai-title":
+			setClaudeTitle(&meta, &titleRank, stringValue(row["aiTitle"]), 4)
+		case "agent-name":
+			setClaudeTitle(&meta, &titleRank, stringValue(row["agentName"]), 3)
+		case "summary":
+			setClaudeTitle(&meta, &titleRank, stringValue(row["summary"]), 2)
+		default:
+			setClaudeTitle(&meta, &titleRank, stringValue(row["slug"]), 1)
 		}
 		ts := parseTimestamp(row)
 		if ts.IsZero() {
 			continue
 		}
-		if meta.FirstTimestamp.IsZero() {
+		if meta.FirstTimestamp.IsZero() || ts.Before(meta.FirstTimestamp) {
 			meta.FirstTimestamp = ts
 		}
-		meta.LastTimestamp = ts
+		if meta.LastTimestamp.IsZero() || ts.After(meta.LastTimestamp) {
+			meta.LastTimestamp = ts
+		}
 	}
-	return meta
+	return meta, nil
+}
+
+func readBoundedLine(reader *bufio.Reader, limit int) ([]byte, error) {
+	line := make([]byte, 0, 64*1024)
+	oversized := false
+	for {
+		fragment, prefix, err := reader.ReadLine()
+		if err != nil {
+			return nil, err
+		}
+		if !oversized {
+			if len(line)+len(fragment) > limit {
+				line = nil
+				oversized = true
+			} else {
+				line = append(line, fragment...)
+			}
+		}
+		if !prefix {
+			if oversized {
+				return nil, nil
+			}
+			return line, nil
+		}
+	}
+}
+
+func setClaudeTitle(meta *claudeMetadata, currentRank *int, title string, rank int) {
+	title = strings.TrimSpace(title)
+	if title == "" || rank < *currentRank {
+		return
+	}
+	meta.Title = title
+	*currentRank = rank
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }
 
 func parseTimestamp(row map[string]any) time.Time {

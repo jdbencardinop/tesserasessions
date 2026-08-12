@@ -60,6 +60,8 @@ herdr-...
 tss scan
 tss scan --source claude
 tss scan --source copilot
+tss scan --source hermes
+tss scan --source opencode
 tss scan --source herdr
 tss scan --source tmux
 tss scan --json
@@ -189,10 +191,15 @@ tss --db /tmp/tss.db list
 
 | Source | What it scans |
 | --- | --- |
-| `claude` | `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
-| `copilot` | `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
+| `claude` | Exact metadata from `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
+| `copilot` | `workspace.yaml` under `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
+| `hermes` | Read-only Hermes `state.db` |
+| `opencode` | Read-only OpenCode SQLite `session` + `project` tables |
 | `herdr` | Default JSON from `herdr agent list` |
 | `tmux` | Recognized coding-agent panes from `tmux list-panes -a` |
+
+See [Historical source adapters](source-adapters.md) for overrides and privacy
+boundaries.
 
 ## tpatch feature workflow
 

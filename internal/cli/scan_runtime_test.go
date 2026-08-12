@@ -62,3 +62,38 @@ func TestPersistScanRuntimesOnlyPrunesCompleteSnapshots(t *testing.T) {
 		t.Fatalf("complete empty scan should prune row, got %v", err)
 	}
 }
+
+func TestPersistScanSessionsOnlyPrunesCompleteSnapshots(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close() //nolint:errcheck
+	ctx := context.Background()
+
+	session := core.NewSession("opencode", "session-1")
+	session.Title = "Session"
+	if err := db.UpsertSession(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistScanSessions(ctx, db, core.ScanResult{
+		Source:  "opencode",
+		Skipped: true,
+		Message: "database unavailable",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.GetSession(ctx, session.ID); err != nil {
+		t.Fatalf("incomplete scan pruned prior session: %v", err)
+	}
+
+	if err := persistScanSessions(ctx, db, core.ScanResult{
+		Source:                  "opencode",
+		SessionSnapshotComplete: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.GetSession(ctx, session.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("complete empty scan should prune session, got %v", err)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -24,6 +25,8 @@ type LiveConfig struct {
 type SourcesConfig struct {
 	ClaudeProjects      string `yaml:"claude_projects"`
 	CopilotSessionState string `yaml:"copilot_session_state"`
+	HermesDatabase      string `yaml:"hermes_database"`
+	OpenCodeDatabase    string `yaml:"opencode_database"`
 }
 
 type SummaryConfig struct {
@@ -66,6 +69,8 @@ func DefaultConfig() Config {
 		Sources: SourcesConfig{
 			ClaudeProjects:      filepath.Join(claudeRoot, "projects"),
 			CopilotSessionState: filepath.Join(copilotRoot, "session-state"),
+			HermesDatabase:      defaultHermesDatabase(home),
+			OpenCodeDatabase:    defaultOpenCodeDatabase(home),
 		},
 	}
 }
@@ -89,6 +94,8 @@ func Load(path string) (Config, error) {
 	cfg.Database = ExpandPath(firstNonEmpty(cfg.Database, filepath.Join(cfg.DataDir, "sessions.db")))
 	cfg.Sources.ClaudeProjects = ExpandPath(firstNonEmpty(cfg.Sources.ClaudeProjects, DefaultConfig().Sources.ClaudeProjects))
 	cfg.Sources.CopilotSessionState = ExpandPath(firstNonEmpty(cfg.Sources.CopilotSessionState, DefaultConfig().Sources.CopilotSessionState))
+	cfg.Sources.HermesDatabase = ExpandPath(firstNonEmpty(cfg.Sources.HermesDatabase, DefaultConfig().Sources.HermesDatabase))
+	cfg.Sources.OpenCodeDatabase = ExpandPath(firstNonEmpty(cfg.Sources.OpenCodeDatabase, DefaultConfig().Sources.OpenCodeDatabase))
 	if cfg.Live.DefaultBackend == "" {
 		cfg.Live.DefaultBackend = "herdr"
 	}
@@ -121,4 +128,55 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func defaultHermesDatabase(home string) string {
+	hermesHome := strings.TrimSpace(os.Getenv("HERMES_HOME"))
+	var base string
+	if hermesHome != "" {
+		base = ExpandPath(hermesHome)
+		if filepath.Base(filepath.Dir(base)) == "profiles" {
+			return filepath.Join(base, "state.db")
+		}
+	} else {
+		base = hermesBaseDir(home, runtime.GOOS, os.Getenv("LOCALAPPDATA"))
+	}
+	if os.Getenv("HERMES_S6_SUPERVISED_CHILD") == "" {
+		profile, err := os.ReadFile(filepath.Join(base, "active_profile"))
+		if err == nil {
+			name := strings.TrimSpace(string(profile))
+			if name != "" && name != "default" && filepath.Base(name) == name {
+				return filepath.Join(base, "profiles", name, "state.db")
+			}
+		}
+	}
+	return filepath.Join(base, "state.db")
+}
+
+func defaultOpenCodeDatabase(home string) string {
+	dataDir := openCodeDataDir(home)
+	if override := os.Getenv("OPENCODE_DB"); override != "" {
+		if override == ":memory:" || filepath.IsAbs(override) {
+			return override
+		}
+		return filepath.Join(dataDir, "opencode", override)
+	}
+	return filepath.Join(dataDir, "opencode", "opencode.db")
+}
+
+func openCodeDataDir(home string) string {
+	if dataDir := os.Getenv("XDG_DATA_HOME"); dataDir != "" {
+		return ExpandPath(dataDir)
+	}
+	return filepath.Join(home, ".local", "share")
+}
+
+func hermesBaseDir(home, goos, localAppData string) string {
+	if goos == "windows" {
+		if localAppData == "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		return filepath.Join(localAppData, "hermes")
+	}
+	return filepath.Join(home, ".hermes")
 }

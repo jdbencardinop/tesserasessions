@@ -142,6 +142,68 @@ func (s *Store) UpsertSource(ctx context.Context, id, kind, path, lastError stri
 }
 
 func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
+	if strings.TrimSpace(sess.Source) == "" || strings.TrimSpace(sess.NativeID) == "" {
+		return fmt.Errorf("session source and native id are required")
+	}
+	return upsertSession(ctx, s.db, sess, false)
+}
+
+// ReplaceSessions atomically replaces one source's authoritative historical
+// snapshot. Existing manual titles, pins, and tags survive rows that remain.
+func (s *Store) ReplaceSessions(ctx context.Context, source string, sessions []core.Session) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return fmt.Errorf("session source is required")
+	}
+	normalized := make([]core.Session, len(sessions))
+	seen := make(map[string]struct{}, len(sessions))
+	for index, session := range sessions {
+		if session.Source == "" {
+			session.Source = source
+		}
+		if session.Source != source {
+			return fmt.Errorf("session source %q does not match snapshot source %q", session.Source, source)
+		}
+		session.NativeID = strings.TrimSpace(session.NativeID)
+		if session.NativeID == "" {
+			return fmt.Errorf("session native id is required")
+		}
+		if _, exists := seen[session.NativeID]; exists {
+			return fmt.Errorf("duplicate native session id %q for source %q", session.NativeID, source)
+		}
+		seen[session.NativeID] = struct{}{}
+		normalized[index] = session
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	for _, session := range normalized {
+		if err := upsertSession(ctx, tx, session, true); err != nil {
+			return err
+		}
+	}
+
+	args := []any{source}
+	query := `DELETE FROM sessions WHERE source = ?`
+	if len(normalized) > 0 {
+		placeholders := make([]string, 0, len(normalized))
+		for _, session := range normalized {
+			placeholders = append(placeholders, "?")
+			args = append(args, session.NativeID)
+		}
+		query += ` AND native_id NOT IN (` + strings.Join(placeholders, ",") + `)`
+	}
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func upsertSession(ctx context.Context, executor dbExecer, sess core.Session, replaceCreatedAt bool) error {
 	now := time.Now().UTC()
 	sess.UpdatedAt = now
 	if sess.CreatedAt.IsZero() {
@@ -153,7 +215,7 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
 	projectID := ""
 	if sess.ProjectPath != "" {
 		projectID = core.ProjectID(sess.ProjectPath)
-		if err := s.upsertProject(ctx, projectID, sess.ProjectPath); err != nil {
+		if err := upsertProject(ctx, executor, projectID, sess.ProjectPath); err != nil {
 			return err
 		}
 	}
@@ -161,7 +223,7 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
 	if titleSource == "" {
 		titleSource = "scanner"
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions
+	_, err := executor.ExecContext(ctx, `INSERT INTO sessions
 		(id, source, native_id, project_id, project_path, agent, title, title_source, goal_summary, status,
 		 pinned, tags, last_activity_at, created_at, updated_at, resume_command, attach_command, raw_path)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -174,13 +236,14 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
 			goal_summary = CASE WHEN excluded.goal_summary != '' THEN excluded.goal_summary ELSE sessions.goal_summary END,
 			status = excluded.status,
 			last_activity_at = excluded.last_activity_at,
+			created_at = CASE WHEN ? = 1 AND excluded.created_at != '' THEN excluded.created_at ELSE sessions.created_at END,
 			updated_at = excluded.updated_at,
 			resume_command = excluded.resume_command,
 			attach_command = excluded.attach_command,
 			raw_path = excluded.raw_path`,
 		sess.ID, sess.Source, sess.NativeID, projectID, sess.ProjectPath, sess.Agent, sess.Title, titleSource,
 		sess.GoalSummary, sess.Status, boolToInt(sess.Pinned), sess.Tags, encodeTime(sess.LastActivityAt), encodeTime(sess.CreatedAt),
-		encodeTime(sess.UpdatedAt), sess.ResumeCommand, sess.AttachCommand, sess.RawPath)
+		encodeTime(sess.UpdatedAt), sess.ResumeCommand, sess.AttachCommand, sess.RawPath, boolToInt(replaceCreatedAt))
 	return err
 }
 
@@ -227,11 +290,11 @@ func (s *Store) ReplaceRuntimes(ctx context.Context, backend string, runtimes []
 	return tx.Commit()
 }
 
-type runtimeExecer interface {
+type dbExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func upsertRuntime(ctx context.Context, executor runtimeExecer, rt core.RuntimeInstance) error {
+func upsertRuntime(ctx context.Context, executor dbExecer, rt core.RuntimeInstance) error {
 	_, err := executor.ExecContext(ctx, `INSERT INTO runtime_instances
 		(id, session_id, backend, native_id, surface, project_path, command, status, attach_command, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -415,8 +478,12 @@ func (s *Store) CountSessions(ctx context.Context) (int, error) {
 }
 
 func (s *Store) upsertProject(ctx context.Context, id, path string) error {
+	return upsertProject(ctx, s.db, id, path)
+}
+
+func upsertProject(ctx context.Context, executor dbExecer, id, path string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO projects (id, path, name, updated_at)
+	_, err := executor.ExecContext(ctx, `INSERT INTO projects (id, path, name, updated_at)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
 		id, path, core.ProjectName(path), now)

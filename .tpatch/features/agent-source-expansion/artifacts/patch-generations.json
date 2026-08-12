@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "feature": "agent-source-expansion",
+  "current_generation": 2,
+  "generations": [
+    {
+      "generation": 1,
+      "generation_id": "pg_1654e3df95a3",
+      "kind": "record",
+      "patch_sha256": "989f806765c8708f5c689c21b1071b29b27e813ac67201f6ea0565ff8225f630",
+      "git_patch_id": "5b6a197a44a7a2e6270c68132cc986fd8c7d8359",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "01f0dffbf8929ef70afc29113fef71d3922f13d2e8e10a572152cd81613488e6",
+      "canonical_patch": "",
+      "audit_patch": "",
+      "base_commit": "eb35fe6a9b414c808ff86f9002bbe9dcb0c97656",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [
+          "CHANGELOG.md",
+          "README.md",
+          "docs/cheatsheet.md",
+          "docs/roadmap.md",
+          "docs/source-adapters.md",
+          "internal/adapters/claude.go",
+          "internal/adapters/claude_test.go",
+          "internal/adapters/copilot.go",
+          "internal/adapters/copilot_test.go",
+          "internal/adapters/hermes_history.go",
+          "internal/adapters/history_sqlite_test.go",
+          "internal/adapters/opencode.go",
+          "internal/adapters/scanner.go",
+          "internal/adapters/sqlite.go",
+          "internal/cli/root.go",
+          "internal/cli/scan_runtime_test.go",
+          "internal/config/config.go",
+          "internal/config/config_test.go",
+          "internal/core/model.go",
+          "internal/store/store.go",
+          "internal/store/store_test.go"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "docs/source-adapters.md",
+        "internal/adapters/claude.go",
+        "internal/adapters/claude_test.go",
+        "internal/adapters/copilot.go",
+        "internal/adapters/copilot_test.go",
+        "internal/adapters/hermes_history.go",
+        "internal/adapters/history_sqlite_test.go",
+        "internal/adapters/opencode.go",
+        "internal/adapters/scanner.go",
+        "internal/adapters/sqlite.go",
+        "internal/cli/root.go",
+        "internal/cli/scan_runtime_test.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/core/model.go",
+        "internal/store/store.go",
+        "internal/store/store_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        },
+        {
+          "slug": "runtime-status-contract",
+          "kind": "soft",
+          "satisfied_by": "",
+          "parent_generation": 4,
+          "parent_patch_sha256": "4c157445d7a1890541952337c96a51f1a9d7d6e4efc2e94e8c4ca578fc8d7ede",
+          "parent_recipe_sha256": "816f3b1e38de03513047751311c3984abe1894c32052722ef93f817e5e7eb6b8"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    },
+    {
+      "generation": 2,
+      "generation_id": "pg_29629a92fabe",
+      "kind": "amend-refresh",
+      "reason": "Mark the four-source adapter expansion delivered and split Codex/t3code into later features.",
+      "patch_sha256": "fa2a1d414e57cc19eefa0b62eb43d16c4aa67b4dc15922c55eaff256c6433a88",
+      "git_patch_id": "3ebcbf2724afd7493a7afd3f4eda6ad657d6f48d",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "01f0dffbf8929ef70afc29113fef71d3922f13d2e8e10a572152cd81613488e6",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "patches/002-refresh.patch",
+      "base_commit": "eb35fe6a9b414c808ff86f9002bbe9dcb0c97656",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "docs/source-adapters.md",
+        "internal/adapters/claude.go",
+        "internal/adapters/claude_test.go",
+        "internal/adapters/copilot.go",
+        "internal/adapters/copilot_test.go",
+        "internal/adapters/hermes_history.go",
+        "internal/adapters/history_sqlite_test.go",
+        "internal/adapters/opencode.go",
+        "internal/adapters/scanner.go",
+        "internal/adapters/sqlite.go",
+        "internal/cli/root.go",
+        "internal/cli/scan_runtime_test.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go",
+        "internal/core/model.go",
+        "internal/store/store.go",
+        "internal/store/store_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "cli-inventory-core",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        },
+        {
+          "slug": "runtime-status-contract",
+          "kind": "soft",
+          "satisfied_by": "",
+          "parent_generation": 4,
+          "parent_patch_sha256": "4c157445d7a1890541952337c96a51f1a9d7d6e4efc2e94e8c4ca578fc8d7ede",
+          "parent_recipe_sha256": "816f3b1e38de03513047751311c3984abe1894c32052722ef93f817e5e7eb6b8"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    }
+  ]
+}

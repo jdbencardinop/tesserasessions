@@ -140,8 +140,12 @@ versioned response to stdout without opening or mutating the inventory.
 
 Initial adapters:
 
-- `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
-- `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
+- `claude`: reads exact session metadata from `~/.claude/projects` or
+  `CLAUDE_CONFIG_DIR/projects`.
+- `copilot`: reads `workspace.yaml` from `~/.copilot/session-state` or
+  `COPILOT_HOME/session-state`.
+- `hermes`: opens the current Hermes `state.db` read-only.
+- `opencode`: opens the current OpenCode SQLite database read-only.
 - `herdr`: uses the default JSON from `herdr agent list` when Herdr is installed
   and running, preserving agent target, pane IDs, and `agent_status`.
 - `tmux`: uses `tmux list-panes -a` and reports only panes whose foreground
@@ -213,6 +217,7 @@ Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [doc
 
 - [Cheatsheet](docs/cheatsheet.md)
 - [Roadmap](docs/roadmap.md)
+- [Historical source adapters](docs/source-adapters.md)
 - [Runtime status contract](docs/runtime-status-contract.md)
 
 ## License

@@ -134,10 +134,8 @@ func (a *appContext) scanCmd() *cobra.Command {
 					reports = append(reports, r)
 					continue
 				}
-				for _, sess := range res.Sessions {
-					if err := db.UpsertSession(ctx, sess); err != nil {
-						return err
-					}
+				if err := persistScanSessions(ctx, db, res); err != nil {
+					return err
 				}
 				if err := persistScanRuntimes(ctx, db, res); err != nil {
 					return err
@@ -166,9 +164,21 @@ func (a *appContext) scanCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, herdr, tmux)")
+	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, hermes, opencode, herdr, tmux)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON")
 	return cmd
+}
+
+func persistScanSessions(ctx context.Context, db *store.Store, result core.ScanResult) error {
+	if result.Err == nil && result.SessionSnapshotComplete {
+		return db.ReplaceSessions(ctx, result.Source, result.Sessions)
+	}
+	for _, session := range result.Sessions {
+		if err := db.UpsertSession(ctx, session); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func persistScanRuntimes(ctx context.Context, db *store.Store, result core.ScanResult) error {
@@ -276,6 +286,8 @@ func (a *appContext) doctorCmd() *cobra.Command {
 			fmt.Println()
 			fmt.Printf("Claude projects: %s [%s]\n", cfg.Sources.ClaudeProjects, existsLabel(cfg.Sources.ClaudeProjects))
 			fmt.Printf("Copilot session-state: %s [%s]\n", cfg.Sources.CopilotSessionState, existsLabel(cfg.Sources.CopilotSessionState))
+			fmt.Printf("Hermes database: %s [%s]\n", cfg.Sources.HermesDatabase, existsLabel(cfg.Sources.HermesDatabase))
+			fmt.Printf("OpenCode database: %s [%s]\n", cfg.Sources.OpenCodeDatabase, existsLabel(cfg.Sources.OpenCodeDatabase))
 			fmt.Println()
 			for _, tool := range []string{"herdr", "tmux", "sqlite3"} {
 				path, err := exec.LookPath(tool)
@@ -828,6 +840,10 @@ func sourcePath(cfg config.Config, source string) string {
 		return cfg.Sources.ClaudeProjects
 	case "copilot":
 		return cfg.Sources.CopilotSessionState
+	case "hermes":
+		return cfg.Sources.HermesDatabase
+	case "opencode":
+		return cfg.Sources.OpenCodeDatabase
 	default:
 		return ""
 	}

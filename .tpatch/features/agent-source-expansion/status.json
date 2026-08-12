@@ -2,12 +2,17 @@
   "id": "agent-source-expansion",
   "slug": "agent-source-expansion",
   "title": "Expand agent-source adapters beyond Claude and Copilot, starting with Hermes Agent and later t3code once the core inventory model is stable; keep parsers read-only and metadata-first.",
-  "state": "requested",
+  "state": "applied",
   "compatibility": "unknown",
   "requested_at": "2026-07-07T04:31:46Z",
-  "updated_at": "2026-07-07T04:31:46Z",
-  "last_command": "add",
-  "apply": {},
+  "updated_at": "2026-08-12T09:30:28Z",
+  "last_command": "record",
+  "notes": "landed at 2026-08-12T09:30:28Z",
+  "apply": {
+    "completed_at": "2026-08-12T09:30:20Z",
+    "base_commit": "eb35fe6a9b414c808ff86f9002bbe9dcb0c97656",
+    "has_patch": true
+  },
   "reconcile": {},
   "depends_on": [
     {
@@ -18,5 +23,14 @@
       "slug": "runtime-status-contract",
       "kind": "soft"
     }
-  ]
+  ],
+  "verify": {
+    "verified_at": "2026-08-12T09:30:20Z",
+    "passed": false,
+    "recipe_hash_at_verify": "01f0dffbf8929ef70afc29113fef71d3922f13d2e8e10a572152cd81613488e6",
+    "patch_hash_at_verify": "fa2a1d414e57cc19eefa0b62eb43d16c4aa67b4dc15922c55eaff256c6433a88",
+    "parent_snapshot": {
+      "cli-inventory-core": "applied"
+    }
+  }
 }

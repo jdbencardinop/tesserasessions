@@ -16,6 +16,8 @@ func DefaultScanners(cfg config.Config) []Scanner {
 	scanners := []Scanner{
 		ClaudeScanner{Root: cfg.Sources.ClaudeProjects},
 		CopilotScanner{Root: cfg.Sources.CopilotSessionState},
+		HermesHistoryScanner{Database: cfg.Sources.HermesDatabase},
+		OpenCodeScanner{Database: cfg.Sources.OpenCodeDatabase},
 	}
 	return append(scanners, LiveScanners()...)
 }
@@ -25,4 +27,18 @@ func LiveScanners() []Scanner {
 		HerdrScanner{},
 		TmuxScanner{},
 	}
+}
+
+func resumeInDirectory(directory, command string) string {
+	if directory == "" {
+		return command
+	}
+	return "cd " + core.ShellQuote(directory) + " && " + command
+}
+
+func commandWithEnv(name, value, command string) string {
+	if value == "" {
+		return command
+	}
+	return name + "=" + core.ShellQuote(value) + " " + command
 }

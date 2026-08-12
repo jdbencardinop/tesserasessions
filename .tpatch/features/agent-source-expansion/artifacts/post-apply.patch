@@ -1,0 +1,2299 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 3e25f07..cec736a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -13,4 +13,12 @@ All notable changes to `tesserasessions` will be documented in this file.
+   branch hints, recognize the current Herdr schema, and exclude ordinary tmux
+   shells from agent status.
+ - Reconcile persisted Herdr/tmux runtime snapshots after successful scans.
++- Read exact Claude and Copilot workspace metadata, and add read-only current
++  Hermes and OpenCode SQLite historical-session adapters.
++- Exclude Claude subagent transcripts, project Hermes compression lineages,
++  validate OpenCode relationships, reconcile authoritative history snapshots,
++  and isolate SQLite WAL/rollback-journal reads and recovery in private
++  snapshots.
++- Preserve source-store environment in exact resume commands and continue
++  Claude metadata scanning after oversized payload rows.
+ - Add tpatch-tracked roadmap metadata and project documentation.
+diff --git a/README.md b/README.md
+index 0a53220..35f2173 100644
+--- a/README.md
++++ b/README.md
+@@ -140,8 +140,12 @@ versioned response to stdout without opening or mutating the inventory.
+ 
+ Initial adapters:
+ 
+-- `claude`: scans `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects`.
+-- `copilot`: scans `~/.copilot/session-state` or `COPILOT_HOME/session-state`.
++- `claude`: reads exact session metadata from `~/.claude/projects` or
++  `CLAUDE_CONFIG_DIR/projects`.
++- `copilot`: reads `workspace.yaml` from `~/.copilot/session-state` or
++  `COPILOT_HOME/session-state`.
++- `hermes`: opens the current Hermes `state.db` read-only.
++- `opencode`: opens the current OpenCode SQLite database read-only.
+ - `herdr`: uses the default JSON from `herdr agent list` when Herdr is installed
+   and running, preserving agent target, pane IDs, and `agent_status`.
+ - `tmux`: uses `tmux list-panes -a` and reports only panes whose foreground
+@@ -213,6 +217,7 @@ Tracked feature slugs are listed in `.tpatch/FEATURES.md` and summarized in [doc
+ 
+ - [Cheatsheet](docs/cheatsheet.md)
+ - [Roadmap](docs/roadmap.md)
++- [Historical source adapters](docs/source-adapters.md)
+ - [Runtime status contract](docs/runtime-status-contract.md)
+ 
+ ## License
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index 44907c5..f90782f 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -60,6 +60,8 @@ herdr-...
+ tss scan
+ tss scan --source claude
+ tss scan --source copilot
++tss scan --source hermes
++tss scan --source opencode
+ tss scan --source herdr
+ tss scan --source tmux
+ tss scan --json
+@@ -189,11 +191,16 @@ tss --db /tmp/tss.db list
+ 
+ | Source | What it scans |
+ | --- | --- |
+-| `claude` | `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
+-| `copilot` | `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
++| `claude` | Exact metadata from `~/.claude/projects` or `CLAUDE_CONFIG_DIR/projects` |
++| `copilot` | `workspace.yaml` under `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
++| `hermes` | Read-only Hermes `state.db` |
++| `opencode` | Read-only OpenCode SQLite `session` + `project` tables |
+ | `herdr` | Default JSON from `herdr agent list` |
+ | `tmux` | Recognized coding-agent panes from `tmux list-panes -a` |
+ 
++See [Historical source adapters](source-adapters.md) for overrides and privacy
++boundaries.
++
+ ## tpatch feature workflow
+ 
+ Check roadmap state:
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 97a825c..1a9b1f5 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -55,12 +55,12 @@ Cross-repository work is intentionally split:
+ 
+ See [Runtime status provider contract](runtime-status-contract.md).
+ 
+-## Next - agent source expansion
++## Delivered - agent source expansion
+ 
+-The next local feature is `agent-source-expansion`, beginning with Hermes Agent
+-and retaining the metadata-first, read-only parser boundary. Its hard core
+-dependency is applied and its soft ordering dependency on
+-`runtime-status-contract` is now satisfied.
++`agent-source-expansion` hardened the existing Claude/Copilot adapters and added
++current Hermes/OpenCode SQLite stores while retaining the metadata-first,
++read-only boundary. Codex and t3code remain later, separate work that should be
++registered as independent features.
+ 
+ ## Tracked features
+ 
+@@ -71,7 +71,7 @@ dependency is applied and its soft ordering dependency on
+ | `live-herdr-tmux-control` | Live-control foundation | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Applied; Herdr remains preferred and tmux remains fallback. |
+ | `runtime-status-contract` | Status provider | Publish a side-effect-free batch JSON provider with freshness, match evidence, raw runtimes, and separate presence/agent-state aggregates. | Applied and verified; does not own the `tws` rollup and never guesses cwd-less sessions. |
+ | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
+-| `agent-source-expansion` | Adapter expansion | Add Hermes Agent first, then t3code once the core data model is stable. | Parsers should stay read-only and metadata-first. |
++| `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. Codex/t3code remain later. |
+ | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
+ 
+ ## Milestones
+@@ -138,13 +138,19 @@ Target:
+ 
+ ### M5 - More source adapters
+ 
+-Target:
++Delivered:
+ 
++- Exact Claude/Copilot metadata and resume identities.
+ - Hermes Agent state database/sessions.
+-- t3code after core schema stabilizes.
+-- Optional Codex/OpenCode adapter if local stores are present.
++- OpenCode SQLite sessions/projects.
+ - Parser fixtures using redacted or synthetic data.
+ 
++Remaining:
++
++- Codex historical sessions as a separate feature.
++- t3code application/server sessions as a separate feature after Codex or when
++  the desktop/server inventory contract is defined.
++
+ ### M6 - Operator UX
+ 
+ Target:
+diff --git a/docs/source-adapters.md b/docs/source-adapters.md
+new file mode 100644
+index 0000000..b42a256
+--- /dev/null
++++ b/docs/source-adapters.md
+@@ -0,0 +1,88 @@
++# Historical session adapters
++
++`tss scan` reads local agent stores into its own inventory. Source stores are
++opened read-only and remain authoritative.
++
++## Supported sources
++
++| Source | Store | Inventory behavior | Exact resume |
++| --- | --- | --- | --- |
++| Claude Code | Direct-child `~/.claude/projects/*/*.jsonl` files or `CLAUDE_CONFIG_DIR` | Reads transcript metadata events for session ID, cwd, title, and timestamps. Subagent transcript directories are excluded. Raw conversation content remains lazy. | `claude --resume <id>` |
++| GitHub Copilot CLI | `~/.copilot/session-state/*/workspace.yaml` or `COPILOT_HOME` | Reads workspace ID, cwd/Git root, repository, branch, name, and timestamps. | `copilot --resume=<id>` |
++| Hermes Agent | `${HERMES_HOME}/state.db`, active profile DB, or `sources.hermes_database` | Queries a private DB+WAL/journal snapshot; lists unarchived logical CLI roots from metadata columns only. | `hermes --resume <id>` |
++| OpenCode | `OPENCODE_DB`, XDG data DB, or `sources.opencode_database` | Queries a private DB+WAL/journal snapshot; joins non-archived root sessions to projects. | `opencode --session <id>` |
++
++Herdr and tmux are separate live-runtime providers. They are not historical
++transcript stores.
++
++## Configuration
++
++```yaml
++sources:
++  claude_projects: ~/.claude/projects
++  copilot_session_state: ~/.copilot/session-state
++  hermes_database: ~/.hermes/state.db
++  opencode_database: ~/.local/share/opencode/opencode.db
++```
++
++Environment precedence:
++
++- Claude: `CLAUDE_CONFIG_DIR`.
++- Copilot: `COPILOT_HOME`.
++- Hermes: `HERMES_HOME`; without it, an `active_profile` selects
++  `~/.hermes/profiles/<name>/state.db`.
++- OpenCode: `OPENCODE_DB`, then `XDG_DATA_HOME`, then
++  `~/.local/share/opencode/opencode.db` on every platform, matching OpenCode's
++  `xdg-basedir` dependency.
++- Hermes on Windows defaults to `%LOCALAPPDATA%\hermes\state.db`.
++
++Explicit config values override these defaults.
++
++Generated resume commands preserve that exact store context:
++
++```sh
++CLAUDE_CONFIG_DIR='/custom/claude' claude --resume '<id>'
++COPILOT_HOME='/custom/copilot' copilot --resume='<id>'
++HERMES_HOME='/custom/hermes/profiles/coder' hermes --resume '<id>'
++OPENCODE_DB='/custom/opencode.db' opencode --session '<id>'
++```
++
++When a root `HERMES_HOME` or the platform default contains a non-default
++`active_profile`, `tss` resolves the same `<root>/profiles/<name>/state.db`
++selected by the Hermes CLI bootstrap. An already profile-scoped
++`HERMES_HOME=<root>/profiles/<name>` remains authoritative.
++For an explicitly configured root `state.db`, `tss` also sets Hermes's
++supervised-child bootstrap guard so a later sticky `active_profile` cannot
++redirect the resume command to another database.
++
++## Privacy boundary
++
++- Scanners never write, migrate, checkpoint, repair, or prune source stores.
++- Hermes/OpenCode DB+WAL or rollback-journal files are copied to a
++  stability-checked private snapshot. SQLite may recover the private journal,
++  then `query_only=1` prevents adapter writes. Source files are never
++  SQLite-opened; coordination/recovery files exist only in temporary storage.
++- Hermes message content, system prompts, gateway routing identity, and user/chat
++  identifiers are not queried.
++- OpenCode messages, parts, credentials, events, and prompts are not queried.
++- Claude transcript content is not needed for inventory metadata; content
++  remains available only to explicit lazy search/summarize workflows.
++- Copilot `events.jsonl` and `session.db` are not read by the inventory scanner;
++  `workspace.yaml` is the metadata authority.
++
++## Default filtering
++
++- Hermes: `source='cli'`, unarchived logical roots only; compression chains use
++  their latest continuation metadata.
++- OpenCode: non-archived root sessions with valid project relationships only.
++- Claude/Copilot: one inventory row per native session/workspace ID.
++
++Successful authoritative scans reconcile the local inventory: sessions deleted,
++archived, or filtered out upstream disappear locally. Manual titles, pins, and
++tags remain attached to sessions that still exist. Missing, failed, or malformed
++source scans never prune prior inventory rows.
++
++Hermes branch conversations are deferred; compression continuations are
++projected into their stable root inventory entry. Archived sessions, internal
++delegate/tool children, OpenCode legacy JSON, development-channel OpenCode
++databases, Codex, and t3code are follow-up compatibility work.
+diff --git a/internal/adapters/claude.go b/internal/adapters/claude.go
+index fb562a1..e6e2c4b 100644
+--- a/internal/adapters/claude.go
++++ b/internal/adapters/claude.go
+@@ -5,7 +5,7 @@ import (
+ 	"context"
+ 	"encoding/json"
+ 	"errors"
+-	"io/fs"
++	"io"
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
+@@ -43,74 +43,173 @@ func (s ClaudeScanner) Scan(ctx context.Context) core.ScanResult {
+ 			continue
+ 		}
+ 		projectDir := filepath.Join(s.Root, entry.Name())
+-		projectPath := core.DecodeClaudeProjectDir(entry.Name())
+-		_ = filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
+-			if err != nil || ctx.Err() != nil {
+-				return nil
++		fallbackProjectPath := core.DecodeClaudeProjectDir(entry.Name())
++		files, err := os.ReadDir(projectDir)
++		if err != nil {
++			result.Err = err
++			return result
++		}
++		for _, file := range files {
++			if ctx.Err() != nil {
++				result.Err = ctx.Err()
++				return result
+ 			}
+-			if d.IsDir() || filepath.Ext(path) != ".jsonl" {
+-				return nil
++			if file.IsDir() || filepath.Ext(file.Name()) != ".jsonl" {
++				continue
+ 			}
+-			info, statErr := d.Info()
++			path := filepath.Join(projectDir, file.Name())
++			info, statErr := file.Info()
+ 			if statErr != nil {
+-				return nil
++				result.Err = statErr
++				return result
+ 			}
+-			nativeID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
++			fileSessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
++			meta, metaErr := readClaudeMetadata(path, fileSessionID)
++			if metaErr != nil {
++				result.Err = metaErr
++				return result
++			}
++			nativeID := firstNonEmpty(fileSessionID, meta.SessionID)
+ 			if nativeID == "" {
+ 				nativeID = path
+ 			}
+-			meta := readJSONLMetadata(path)
+ 			lastActivity := core.NonZeroTime(meta.LastTimestamp, info.ModTime())
+ 			created := core.NonZeroTime(meta.FirstTimestamp, info.ModTime())
++			projectPath := firstNonEmpty(meta.CWD, fallbackProjectPath)
++			title := meta.Title
++			if title == "" {
++				title = "Claude: " + core.ProjectName(projectPath)
++			}
+ 			session := core.NewSession("claude", nativeID)
+ 			session.ProjectPath = projectPath
+ 			session.Agent = "claude"
+-			session.Title = "Claude: " + core.ProjectName(projectPath)
++			session.Title = core.Truncate(title, 120)
+ 			session.Status = core.StatusUnknown
+ 			session.LastActivityAt = lastActivity.UTC()
+ 			session.CreatedAt = created.UTC()
+-			session.ResumeCommand = "cd " + core.ShellQuote(projectPath) + " && claude -c"
++			resume := commandWithEnv(
++				"CLAUDE_CONFIG_DIR",
++				filepath.Dir(s.Root),
++				"claude --resume "+core.ShellQuote(nativeID),
++			)
++			session.ResumeCommand = resumeInDirectory(projectPath, resume)
+ 			session.RawPath = path
+ 			result.Sessions = append(result.Sessions, session)
+-			return nil
+-		})
++		}
+ 	}
++	result.SessionSnapshotComplete = true
+ 	return result
+ }
+ 
+-type jsonlMetadata struct {
++type claudeMetadata struct {
++	SessionID      string
++	CWD            string
++	GitBranch      string
++	Title          string
+ 	FirstTimestamp time.Time
+ 	LastTimestamp  time.Time
+ }
+ 
+-func readJSONLMetadata(path string) jsonlMetadata {
++func readClaudeMetadata(path, expectedSessionID string) (claudeMetadata, error) {
+ 	file, err := os.Open(path)
+ 	if err != nil {
+-		return jsonlMetadata{}
++		return claudeMetadata{}, err
+ 	}
+ 	defer file.Close() //nolint:errcheck
+-	var meta jsonlMetadata
+-	scanner := bufio.NewScanner(file)
+-	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+-	for scanner.Scan() {
+-		line := strings.TrimSpace(scanner.Text())
+-		if line == "" {
++	var meta claudeMetadata
++	titleRank := 0
++	reader := bufio.NewReaderSize(file, 64*1024)
++	for {
++		line, err := readBoundedLine(reader, 2*1024*1024)
++		if errors.Is(err, io.EOF) {
++			break
++		}
++		if err != nil {
++			return meta, err
++		}
++		if len(line) == 0 {
+ 			continue
+ 		}
+ 		var row map[string]any
+-		if err := json.Unmarshal([]byte(line), &row); err != nil {
++		if err := json.Unmarshal(line, &row); err != nil {
++			continue
++		}
++		rowSessionID := stringValue(row["sessionId"])
++		if expectedSessionID != "" && rowSessionID != "" && rowSessionID != expectedSessionID {
+ 			continue
+ 		}
++		if meta.SessionID == "" && rowSessionID != "" {
++			meta.SessionID = rowSessionID
++		}
++		if value := stringValue(row["cwd"]); value != "" && meta.CWD == "" {
++			meta.CWD = value
++		}
++		if value := stringValue(row["gitBranch"]); value != "" && meta.GitBranch == "" {
++			meta.GitBranch = value
++		}
++		switch stringValue(row["type"]) {
++		case "custom-title":
++			setClaudeTitle(&meta, &titleRank, stringValue(row["customTitle"]), 5)
++		case "ai-title":
++			setClaudeTitle(&meta, &titleRank, stringValue(row["aiTitle"]), 4)
++		case "agent-name":
++			setClaudeTitle(&meta, &titleRank, stringValue(row["agentName"]), 3)
++		case "summary":
++			setClaudeTitle(&meta, &titleRank, stringValue(row["summary"]), 2)
++		default:
++			setClaudeTitle(&meta, &titleRank, stringValue(row["slug"]), 1)
++		}
+ 		ts := parseTimestamp(row)
+ 		if ts.IsZero() {
+ 			continue
+ 		}
+-		if meta.FirstTimestamp.IsZero() {
++		if meta.FirstTimestamp.IsZero() || ts.Before(meta.FirstTimestamp) {
+ 			meta.FirstTimestamp = ts
+ 		}
+-		meta.LastTimestamp = ts
++		if meta.LastTimestamp.IsZero() || ts.After(meta.LastTimestamp) {
++			meta.LastTimestamp = ts
++		}
+ 	}
+-	return meta
++	return meta, nil
++}
++
++func readBoundedLine(reader *bufio.Reader, limit int) ([]byte, error) {
++	line := make([]byte, 0, 64*1024)
++	oversized := false
++	for {
++		fragment, prefix, err := reader.ReadLine()
++		if err != nil {
++			return nil, err
++		}
++		if !oversized {
++			if len(line)+len(fragment) > limit {
++				line = nil
++				oversized = true
++			} else {
++				line = append(line, fragment...)
++			}
++		}
++		if !prefix {
++			if oversized {
++				return nil, nil
++			}
++			return line, nil
++		}
++	}
++}
++
++func setClaudeTitle(meta *claudeMetadata, currentRank *int, title string, rank int) {
++	title = strings.TrimSpace(title)
++	if title == "" || rank < *currentRank {
++		return
++	}
++	meta.Title = title
++	*currentRank = rank
++}
++
++func stringValue(value any) string {
++	text, _ := value.(string)
++	return strings.TrimSpace(text)
+ }
+ 
+ func parseTimestamp(row map[string]any) time.Time {
+diff --git a/internal/adapters/claude_test.go b/internal/adapters/claude_test.go
+index aa020aa..4c48ff6 100644
+--- a/internal/adapters/claude_test.go
++++ b/internal/adapters/claude_test.go
+@@ -4,28 +4,100 @@ import (
+ 	"context"
+ 	"os"
+ 	"path/filepath"
++	"strings"
+ 	"testing"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
+ )
+ 
+-func TestClaudeScannerFindsJSONL(t *testing.T) {
++func TestClaudeScannerUsesExactTranscriptMetadata(t *testing.T) {
++	root := t.TempDir()
++	project := filepath.Join(root, "-Users-test-my-project-with-hyphen")
++	if err := os.MkdirAll(project, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(project, "exact-id.jsonl")
++	data := strings.Join([]string{
++		`{"type":"user","sessionId":"exact-id","cwd":"/Users/test/my-project-with-hyphen","gitBranch":"feature/auth","timestamp":"2026-01-01T00:00:00Z"}`,
++		`{"type":"ai-title","sessionId":"exact-id","aiTitle":"AI title"}`,
++		`{"type":"custom-title","sessionId":"exact-id","customTitle":"User title"}`,
++		`{"type":"assistant","sessionId":"exact-id","cwd":"/Users/test/my-project-with-hyphen","timestamp":"2026-01-01T01:00:00Z"}`,
++		`{"type":"custom-title","sessionId":"sidechain-id","cwd":"/wrong","customTitle":"Wrong sidechain title","timestamp":"2026-01-02T01:00:00Z"}`,
++		`{"partial":`,
++	}, "\n")
++	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	result := (ClaudeScanner{Root: root}).Scan(context.Background())
++	if result.Err != nil {
++		t.Fatal(result.Err)
++	}
++	if len(result.Sessions) != 1 {
++		t.Fatalf("expected one session, got %d", len(result.Sessions))
++	}
++	session := result.Sessions[0]
++	if session.NativeID != "exact-id" {
++		t.Fatalf("native id = %q", session.NativeID)
++	}
++	if session.ProjectPath != "/Users/test/my-project-with-hyphen" {
++		t.Fatalf("project path = %q", session.ProjectPath)
++	}
++	if session.Title != "User title" {
++		t.Fatalf("title = %q", session.Title)
++	}
++	if session.CreatedAt != time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) {
++		t.Fatalf("created = %s", session.CreatedAt)
++	}
++	if session.LastActivityAt != time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC) {
++		t.Fatalf("updated = %s", session.LastActivityAt)
++	}
++	wantResume := "cd '/Users/test/my-project-with-hyphen' && CLAUDE_CONFIG_DIR=" +
++		core.ShellQuote(filepath.Dir(root)) + " claude --resume 'exact-id'"
++	if session.ResumeCommand != wantResume {
++		t.Fatalf("resume = %q, want %q", session.ResumeCommand, wantResume)
++	}
++}
++
++func TestClaudeScannerSkipsOversizedRowsAndContinues(t *testing.T) {
++	root := t.TempDir()
++	project := filepath.Join(root, "-repo")
++	if err := os.MkdirAll(project, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(project, "session.jsonl")
++	oversized := `{"type":"assistant","sessionId":"session","payload":"` +
++		strings.Repeat("x", 2*1024*1024+1024) + `"}`
++	data := oversized + "\n" +
++		`{"type":"custom-title","sessionId":"session","cwd":"/repo","customTitle":"After large row","timestamp":"2026-01-01T00:00:00Z"}` + "\n"
++	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	result := (ClaudeScanner{Root: root}).Scan(context.Background())
++	if result.Err != nil || len(result.Sessions) != 1 {
++		t.Fatalf("unexpected result: %+v", result)
++	}
++	if result.Sessions[0].Title != "After large row" {
++		t.Fatalf("title after oversized row = %q", result.Sessions[0].Title)
++	}
++}
++
++func TestClaudeScannerFallsBackToEncodedDirectory(t *testing.T) {
+ 	root := t.TempDir()
+ 	project := filepath.Join(root, "-tmp-project")
+-	if err := os.MkdirAll(project, 0755); err != nil {
++	if err := os.MkdirAll(project, 0o755); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	path := filepath.Join(project, "session-1.jsonl")
+-	data := `{"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"Build auth"}}` + "\n"
+-	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
++	if err := os.WriteFile(path, []byte(`{"timestamp":"2026-01-01T00:00:00Z"}`+"\n"), 0o644); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	res := ClaudeScanner{Root: root}.Scan(context.Background())
+-	if res.Err != nil {
+-		t.Fatal(res.Err)
+-	}
+-	if len(res.Sessions) != 1 {
+-		t.Fatalf("expected one session, got %d", len(res.Sessions))
++	result := (ClaudeScanner{Root: root}).Scan(context.Background())
++	if result.Err != nil || len(result.Sessions) != 1 {
++		t.Fatalf("unexpected result: %+v", result)
+ 	}
+-	if res.Sessions[0].Agent != "claude" {
+-		t.Fatalf("expected claude agent, got %q", res.Sessions[0].Agent)
++	if result.Sessions[0].ProjectPath != "/tmp/project" {
++		t.Fatalf("fallback path = %q", result.Sessions[0].ProjectPath)
+ 	}
+ }
+diff --git a/internal/adapters/copilot.go b/internal/adapters/copilot.go
+index de0b97d..fe1e3bc 100644
+--- a/internal/adapters/copilot.go
++++ b/internal/adapters/copilot.go
+@@ -9,6 +9,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/jdbencardinop/tesserasessions/internal/core"
++	"gopkg.in/yaml.v3"
+ )
+ 
+ type CopilotScanner struct {
+@@ -36,58 +37,97 @@ func (s CopilotScanner) Scan(ctx context.Context) core.ScanResult {
+ 			result.Err = ctx.Err()
+ 			return result
+ 		}
++		if strings.HasPrefix(entry.Name(), ".") || !entry.IsDir() {
++			continue
++		}
+ 		path := filepath.Join(s.Root, entry.Name())
+-		if strings.HasPrefix(entry.Name(), ".") {
++		workspacePath := filepath.Join(path, "workspace.yaml")
++		if !core.ExistingFile(workspacePath) {
+ 			continue
+ 		}
+ 		info, err := entry.Info()
+ 		if err != nil {
+-			continue
++			result.Err = err
++			return result
+ 		}
+-		if !entry.IsDir() && !isCopilotSessionFile(entry.Name()) {
+-			continue
++		metadata, err := readCopilotWorkspace(workspacePath)
++		if err != nil {
++			result.Err = err
++			return result
++		}
++		workspaceModified := info.ModTime()
++		if workspaceInfo, statErr := os.Stat(workspacePath); statErr == nil {
++			workspaceModified = workspaceInfo.ModTime()
++		}
++		nativeID := firstNonEmpty(metadata.ID, entry.Name())
++		projectPath := firstNonEmpty(metadata.CWD, metadata.GitRoot)
++		title := metadata.Name
++		if title == "" && metadata.Repository != "" {
++			title = "Copilot: " + metadata.Repository
+ 		}
+-		last := info.ModTime()
+-		if entry.IsDir() {
+-			last = newestModTime(path, last)
++		if title == "" {
++			title = "Copilot: " + core.ProjectName(projectPath)
++		}
++		created := core.NonZeroTime(parseTimeString(metadata.CreatedAt), workspaceModified)
++		updated := parseTimeString(metadata.UpdatedAt)
++		if updated.IsZero() {
++			updated = core.NonZeroTime(created, workspaceModified)
+ 		}
+-		nativeID := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+ 		session := core.NewSession("copilot", nativeID)
++		session.ProjectPath = projectPath
+ 		session.Agent = "copilot"
+-		session.Title = "Copilot: " + core.Truncate(nativeID, 32)
++		session.Title = core.Truncate(title, 120)
+ 		session.Status = core.StatusUnknown
+-		session.LastActivityAt = last.UTC()
+-		session.CreatedAt = last.UTC()
+-		session.ResumeCommand = "copilot --resume=" + core.ShellQuote(nativeID)
++		session.LastActivityAt = updated.UTC()
++		session.CreatedAt = created.UTC()
++		resume := commandWithEnv(
++			"COPILOT_HOME",
++			filepath.Dir(s.Root),
++			"copilot --resume="+core.ShellQuote(nativeID),
++		)
++		session.ResumeCommand = resumeInDirectory(projectPath, resume)
+ 		session.RawPath = path
+ 		result.Sessions = append(result.Sessions, session)
+ 	}
+ 	sort.Slice(result.Sessions, func(i, j int) bool {
+ 		return result.Sessions[i].LastActivityAt.After(result.Sessions[j].LastActivityAt)
+ 	})
++	result.SessionSnapshotComplete = true
+ 	return result
+ }
+ 
+-func isCopilotSessionFile(name string) bool {
+-	switch filepath.Ext(name) {
+-	case ".json", ".jsonl", ".db", ".md", ".yaml":
+-		return true
+-	default:
+-		return false
++type copilotWorkspace struct {
++	ID         string `yaml:"id"`
++	CWD        string `yaml:"cwd"`
++	GitRoot    string `yaml:"git_root"`
++	Repository string `yaml:"repository"`
++	HostType   string `yaml:"host_type"`
++	Branch     string `yaml:"branch"`
++	ClientName string `yaml:"client_name"`
++	Name       string `yaml:"name"`
++	UserNamed  bool   `yaml:"user_named"`
++	CreatedAt  string `yaml:"created_at"`
++	UpdatedAt  string `yaml:"updated_at"`
++}
++
++func readCopilotWorkspace(path string) (copilotWorkspace, error) {
++	data, err := os.ReadFile(path)
++	if err != nil {
++		return copilotWorkspace{}, err
+ 	}
++	var metadata copilotWorkspace
++	if err := yaml.Unmarshal(data, &metadata); err != nil {
++		return copilotWorkspace{}, err
++	}
++	return metadata, nil
+ }
+ 
+-func newestModTime(root string, fallback time.Time) time.Time {
+-	newest := fallback
+-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+-		if err != nil || d.IsDir() {
+-			return nil
+-		}
+-		info, err := d.Info()
+-		if err == nil && info.ModTime().After(newest) {
+-			newest = info.ModTime()
++func parseTimeString(value string) time.Time {
++	value = strings.TrimSpace(value)
++	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05"} {
++		if parsed, err := time.Parse(layout, value); err == nil {
++			return parsed.UTC()
+ 		}
+-		return nil
+-	})
+-	return newest
++	}
++	return time.Time{}
+ }
+diff --git a/internal/adapters/copilot_test.go b/internal/adapters/copilot_test.go
+new file mode 100644
+index 0000000..d48b195
+--- /dev/null
++++ b/internal/adapters/copilot_test.go
+@@ -0,0 +1,80 @@
++package adapters
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++func TestCopilotScannerReadsWorkspaceMetadata(t *testing.T) {
++	root := t.TempDir()
++	writeCopilotWorkspace(t, root, "session-named", `
++id: exact-id
++cwd: /repo/worktree
++git_root: /repo
++repository: owner/repo
++branch: feature/auth
++name: Refactor auth
++created_at: 2026-01-01T00:00:00Z
++updated_at: 2026-01-01T02:00:00Z
++`)
++	writeCopilotWorkspace(t, root, "session-unnamed", `
++id: fallback-id
++cwd: /repo/other
++repository: owner/other
++created_at: 2026-01-02T00:00:00Z
++updated_at: 2026-01-02T01:00:00Z
++`)
++	if err := os.Mkdir(filepath.Join(root, "not-a-session"), 0o755); err != nil {
++		t.Fatal(err)
++	}
++
++	result := (CopilotScanner{Root: root}).Scan(context.Background())
++	if result.Err != nil {
++		t.Fatal(result.Err)
++	}
++	if len(result.Sessions) != 2 {
++		t.Fatalf("sessions = %d", len(result.Sessions))
++	}
++	named := findNativeSession(t, result.Sessions, "exact-id")
++	if named.ProjectPath != "/repo/worktree" || named.Title != "Refactor auth" {
++		t.Fatalf("unexpected named session: %+v", named)
++	}
++	if named.CreatedAt != time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) ||
++		named.LastActivityAt != time.Date(2026, 1, 1, 2, 0, 0, 0, time.UTC) {
++		t.Fatalf("unexpected timestamps: %+v", named)
++	}
++	wantResume := "cd '/repo/worktree' && COPILOT_HOME=" +
++		core.ShellQuote(filepath.Dir(root)) + " copilot --resume='exact-id'"
++	if named.ResumeCommand != wantResume {
++		t.Fatalf("resume = %q, want %q", named.ResumeCommand, wantResume)
++	}
++	unnamed := findNativeSession(t, result.Sessions, "fallback-id")
++	if unnamed.Title != "Copilot: owner/other" {
++		t.Fatalf("fallback title = %q", unnamed.Title)
++	}
++}
++
++func TestCopilotScannerRejectsMalformedWorkspace(t *testing.T) {
++	root := t.TempDir()
++	writeCopilotWorkspace(t, root, "broken", "id: [\n")
++	result := (CopilotScanner{Root: root}).Scan(context.Background())
++	if result.Err == nil {
++		t.Fatal("expected malformed workspace error")
++	}
++}
++
++func writeCopilotWorkspace(t *testing.T, root, id, content string) {
++	t.Helper()
++	dir := filepath.Join(root, id)
++	if err := os.MkdirAll(dir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(dir, "workspace.yaml"), []byte(content), 0o644); err != nil {
++		t.Fatal(err)
++	}
++}
+diff --git a/internal/adapters/hermes_history.go b/internal/adapters/hermes_history.go
+new file mode 100644
+index 0000000..e1b3c25
+--- /dev/null
++++ b/internal/adapters/hermes_history.go
+@@ -0,0 +1,179 @@
++package adapters
++
++import (
++	"context"
++	"fmt"
++	"path/filepath"
++	"strings"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++type HermesHistoryScanner struct {
++	Database string
++}
++
++func (s HermesHistoryScanner) Name() string {
++	return "hermes"
++}
++
++func (s HermesHistoryScanner) Scan(ctx context.Context) core.ScanResult {
++	result := core.ScanResult{Source: s.Name()}
++	if !core.ExistingFile(s.Database) {
++		result.Skipped = true
++		result.Message = "Hermes state database not found"
++		return result
++	}
++	db, err := openReadOnlySQLite(ctx, s.Database)
++	if err != nil {
++		result.Err = err
++		return result
++	}
++	defer db.Close() //nolint:errcheck
++
++	rows, err := db.QueryContext(ctx, `
++		WITH RECURSIVE
++		roots AS (
++			SELECT id, title, cwd, git_repo_root, started_at
++			FROM sessions
++			WHERE source = 'cli'
++			  AND parent_session_id IS NULL
++			  AND COALESCE(archived, 0) = 0
++			  AND json_extract(COALESCE(model_config, '{}'), '$._branched_from') IS NULL
++			  AND json_extract(COALESCE(model_config, '{}'), '$._delegate_from') IS NULL
++		),
++		lineage(root_id, id, depth) AS (
++			SELECT id, id, 0 FROM roots
++			UNION ALL
++			SELECT lineage.root_id, child.id, lineage.depth + 1
++			FROM lineage
++			JOIN sessions parent ON parent.id = lineage.id
++			JOIN sessions child ON child.id = (
++				SELECT candidate.id
++				FROM sessions candidate
++				WHERE candidate.parent_session_id = parent.id
++				  AND parent.end_reason = 'compression'
++				  AND json_extract(COALESCE(candidate.model_config, '{}'), '$._branched_from') IS NULL
++				  AND json_extract(COALESCE(candidate.model_config, '{}'), '$._delegate_from') IS NULL
++				  AND COALESCE(candidate.source, '') != 'tool'
++				  AND COALESCE(candidate.archived, 0) = 0
++				ORDER BY
++				  CASE
++				    WHEN candidate.end_reason = 'compression' THEN 0
++				    WHEN candidate.ended_at IS NULL THEN 1
++				    ELSE 2
++				  END,
++				  MAX(
++				    COALESCE(candidate.last_activity_at, 0),
++				    COALESCE((
++				      SELECT MAX(message.timestamp)
++				      FROM messages message
++				      WHERE message.session_id = candidate.id
++				        AND COALESCE(message.active, 1) = 1
++				    ), 0),
++				    candidate.started_at
++				  ) DESC,
++				  candidate.started_at DESC,
++				  candidate.id DESC
++				LIMIT 1
++			)
++			WHERE lineage.depth < 100
++		),
++		ranked AS (
++			SELECT
++				root_id,
++				id,
++				ROW_NUMBER() OVER (PARTITION BY root_id ORDER BY depth DESC, id DESC) AS rank
++			FROM lineage
++		)
++		SELECT
++			root.id,
++			COALESCE(NULLIF(tip.title, ''), NULLIF(root.title, ''), ''),
++			COALESCE(NULLIF(tip.cwd, ''), NULLIF(root.cwd, ''), ''),
++			COALESCE(NULLIF(tip.git_repo_root, ''), NULLIF(root.git_repo_root, ''), ''),
++			root.started_at,
++			MAX(
++			  COALESCE(tip.last_activity_at, 0),
++			  COALESCE((
++			    SELECT MAX(message.timestamp)
++			    FROM messages message
++			    WHERE message.session_id = tip.id
++			      AND COALESCE(message.active, 1) = 1
++			  ), 0),
++			  tip.started_at
++			) AS tip_last_active
++		FROM roots root
++		JOIN ranked ON ranked.root_id = root.id AND ranked.rank = 1
++		JOIN sessions tip ON tip.id = ranked.id
++		ORDER BY COALESCE(tip.last_activity_at, tip.ended_at, tip.started_at, root.started_at) DESC
++	`)
++	if err != nil {
++		result.Err = fmt.Errorf("querying Hermes sessions: %w", err)
++		return result
++	}
++	defer rows.Close()
++
++	for rows.Next() {
++		if ctx.Err() != nil {
++			result.Err = ctx.Err()
++			return result
++		}
++		var (
++			id, title, cwd, repoRoot   string
++			rootStarted, tipLastActive float64
++		)
++		if err := rows.Scan(
++			&id,
++			&title,
++			&cwd,
++			&repoRoot,
++			&rootStarted,
++			&tipLastActive,
++		); err != nil {
++			result.Err = err
++			return result
++		}
++		id = strings.TrimSpace(id)
++		if id == "" {
++			result.Err = fmt.Errorf("Hermes session has empty id")
++			return result
++		}
++		projectPath := firstNonEmpty(strings.TrimSpace(cwd), strings.TrimSpace(repoRoot))
++		displayTitle := strings.TrimSpace(title)
++		if displayTitle == "" {
++			displayTitle = "Hermes: " + core.ProjectName(projectPath)
++		}
++		created := unixSeconds(rootStarted)
++		updated := unixSeconds(tipLastActive)
++		if updated.IsZero() {
++			updated = created
++		}
++
++		session := core.NewSession("hermes", id)
++		session.ProjectPath = projectPath
++		session.Agent = "hermes"
++		session.Title = core.Truncate(displayTitle, 120)
++		session.Status = core.StatusUnknown
++		session.CreatedAt = created
++		session.LastActivityAt = updated
++		resume := hermesResumeCommand(s.Database, id)
++		session.ResumeCommand = resumeInDirectory(projectPath, resume)
++		session.RawPath = s.Database
++		result.Sessions = append(result.Sessions, session)
++	}
++	if err := rows.Err(); err != nil {
++		result.Err = err
++		return result
++	}
++	result.SessionSnapshotComplete = true
++	return result
++}
++
++func hermesResumeCommand(database, sessionID string) string {
++	home := filepath.Dir(database)
++	command := "hermes --resume " + core.ShellQuote(sessionID)
++	if filepath.Base(filepath.Dir(home)) != "profiles" {
++		command = commandWithEnv("HERMES_S6_SUPERVISED_CHILD", "1", command)
++	}
++	return commandWithEnv("HERMES_HOME", home, command)
++}
+diff --git a/internal/adapters/history_sqlite_test.go b/internal/adapters/history_sqlite_test.go
+new file mode 100644
+index 0000000..90000c1
+--- /dev/null
++++ b/internal/adapters/history_sqlite_test.go
+@@ -0,0 +1,379 @@
++package adapters
++
++import (
++	"bytes"
++	"context"
++	"database/sql"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++func TestHermesHistoryScannerReadsCurrentMetadataOnly(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "state.db")
++	db := createSQLiteFixture(t, path, `
++		CREATE TABLE sessions (
++			id TEXT PRIMARY KEY,
++			source TEXT NOT NULL,
++			title TEXT,
++			cwd TEXT,
++			git_repo_root TEXT,
++			started_at REAL NOT NULL,
++			ended_at REAL,
++			last_activity_at REAL,
++			parent_session_id TEXT,
++			archived INTEGER DEFAULT 0,
++			end_reason TEXT,
++			model_config TEXT
++		);
++		CREATE TABLE messages (
++			id INTEGER PRIMARY KEY,
++			session_id TEXT,
++			content TEXT,
++			timestamp REAL,
++			active INTEGER DEFAULT 1
++		);
++	`)
++	mustExec(t, db, `INSERT INTO sessions (
++			id, source, title, cwd, git_repo_root, started_at, ended_at,
++			last_activity_at, parent_session_id, archived, end_reason, model_config
++		) VALUES
++		('root', 'cli', 'Fix build', '/repo/worktree', '/repo', 1000.25, 1100, 1100, NULL, 0, 'compression', NULL),
++		('child', 'cli', 'Fix build #2', '/repo/new-worktree', '/repo', 1201, NULL, 1300.5, 'root', 0, NULL, NULL),
++		('delegate', 'cli', 'Wrong delegate', '/wrong/delegate', '/wrong', 1202, NULL, 9999, 'root', 0, NULL, '{"_delegate_from":"root"}'),
++		('branch', 'cli', 'Wrong branch', '/wrong/branch', '/wrong', 1203, NULL, 9998, 'root', 0, NULL, '{"_branched_from":"root"}'),
++		('tool', 'tool', 'Wrong tool', '/wrong/tool', '/wrong', 1204, NULL, 9997, 'root', 0, NULL, NULL),
++		('orphan-delegate', 'cli', 'Orphan delegate', '/wrong/orphan', '/wrong', 1205, NULL, 9996, NULL, 0, NULL, '{"_delegate_from":"deleted"}'),
++		('orphan-branch', 'cli', 'Orphan branch', '/wrong/orphan', '/wrong', 1206, NULL, 9995, NULL, 0, NULL, '{"_branched_from":"deleted"}'),
++		('archived', 'cli', 'Old', '/repo', '/repo', 900, 950, 950, NULL, 1, NULL, NULL),
++		('gateway', 'telegram', 'Chat', NULL, NULL, 1000, NULL, NULL, NULL, 0, NULL, NULL)`)
++	mustExec(t, db, `INSERT INTO messages VALUES
++		(1, 'root', 'private transcript content', 1150, 1),
++		(2, 'child', 'latest private transcript content', 1400.5, 1)`)
++	if err := db.Close(); err != nil {
++		t.Fatal(err)
++	}
++	before := readFixtureBytes(t, path)
++
++	result := (HermesHistoryScanner{Database: path}).Scan(context.Background())
++	if result.Err != nil {
++		t.Fatal(result.Err)
++	}
++	if len(result.Sessions) != 1 {
++		t.Fatalf("sessions = %d, want 1", len(result.Sessions))
++	}
++	session := result.Sessions[0]
++	if session.NativeID != "root" || session.Title != "Fix build #2" || session.ProjectPath != "/repo/new-worktree" {
++		t.Fatalf("unexpected session: %+v", session)
++	}
++	if session.CreatedAt.Unix() != 1000 || session.LastActivityAt.Unix() != 1400 {
++		t.Fatalf("unexpected times: created=%s updated=%s", session.CreatedAt, session.LastActivityAt)
++	}
++	wantResume := "cd '/repo/new-worktree' && HERMES_HOME=" +
++		core.ShellQuote(filepath.Dir(path)) +
++		" HERMES_S6_SUPERVISED_CHILD='1' hermes --resume 'root'"
++	if session.ResumeCommand != wantResume {
++		t.Fatalf("resume = %q", session.ResumeCommand)
++	}
++	if !result.SessionSnapshotComplete {
++		t.Fatal("successful Hermes scan must be authoritative")
++	}
++	if !bytes.Equal(before, readFixtureBytes(t, path)) {
++		t.Fatal("Hermes scanner modified the database")
++	}
++}
++
++func TestHermesResumeCommandKeepsProfileScopedHome(t *testing.T) {
++	database := filepath.Join("/hermes", "profiles", "coder", "state.db")
++	want := "HERMES_HOME='/hermes/profiles/coder' hermes --resume 'session'"
++	if got := hermesResumeCommand(database, "session"); got != want {
++		t.Fatalf("resume = %q, want %q", got, want)
++	}
++}
++
++func TestOpenCodeScannerReadsCurrentMetadataOnly(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "opencode.db")
++	db := createSQLiteFixture(t, path, `
++		CREATE TABLE project (
++			id TEXT PRIMARY KEY,
++			worktree TEXT NOT NULL,
++			name TEXT
++		);
++		CREATE TABLE "session" (
++			id TEXT PRIMARY KEY,
++			slug TEXT,
++			title TEXT,
++			project_id TEXT NOT NULL,
++			parent_id TEXT,
++			directory TEXT,
++			path TEXT,
++			time_created INTEGER NOT NULL,
++			time_updated INTEGER NOT NULL,
++			time_archived INTEGER
++		);
++	`)
++	mustExec(t, db, `INSERT INTO project VALUES ('project', '/repo', 'app')`)
++	mustExec(t, db, `INSERT INTO "session" VALUES
++		('root', 'happy-dolphin', 'Refactor auth', 'project', NULL, '/repo/packages/api', 'packages/api', 1000000, 2000000, NULL),
++		('child', 'child', 'Child', 'project', 'root', '/repo', NULL, 1000000, 2000000, NULL),
++		('archived', 'old', 'Old', 'project', NULL, '/repo', NULL, 1000000, 2000000, 3000000),
++		('fallback', 'quiet-panda', '', 'project', NULL, '', 'packages/web', 3000000, 4000000, NULL)`)
++	if err := db.Close(); err != nil {
++		t.Fatal(err)
++	}
++	before := readFixtureBytes(t, path)
++
++	result := (OpenCodeScanner{Database: path}).Scan(context.Background())
++	if result.Err != nil {
++		t.Fatal(result.Err)
++	}
++	if len(result.Sessions) != 2 {
++		t.Fatalf("sessions = %d, want 2", len(result.Sessions))
++	}
++	root := findNativeSession(t, result.Sessions, "root")
++	if root.ProjectPath != "/repo/packages/api" || root.Title != "Refactor auth" {
++		t.Fatalf("unexpected root: %+v", root)
++	}
++	wantResume := "cd '/repo/packages/api' && OPENCODE_DB=" +
++		core.ShellQuote(path) + " opencode --session 'root'"
++	if root.ResumeCommand != wantResume {
++		t.Fatalf("resume = %q", root.ResumeCommand)
++	}
++	fallback := findNativeSession(t, result.Sessions, "fallback")
++	if fallback.ProjectPath != "/repo/packages/web" || fallback.Title != "quiet-panda" {
++		t.Fatalf("unexpected fallback: %+v", fallback)
++	}
++	if !result.SessionSnapshotComplete {
++		t.Fatal("successful OpenCode scan must be authoritative")
++	}
++	if !bytes.Equal(before, readFixtureBytes(t, path)) {
++		t.Fatal("OpenCode scanner modified the database")
++	}
++}
++
++func TestHistorySQLiteScannersSkipMissingAndRejectMalformed(t *testing.T) {
++	missing := filepath.Join(t.TempDir(), "missing.db")
++	for _, result := range []core.ScanResult{
++		(HermesHistoryScanner{Database: missing}).Scan(context.Background()),
++		(OpenCodeScanner{Database: missing}).Scan(context.Background()),
++	} {
++		if !result.Skipped || result.Err != nil {
++			t.Fatalf("missing database result: %+v", result)
++		}
++	}
++
++	broken := filepath.Join(t.TempDir(), "broken.db")
++	if err := os.WriteFile(broken, []byte("not sqlite"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	before := readFixtureBytes(t, broken)
++	for _, result := range []core.ScanResult{
++		(HermesHistoryScanner{Database: broken}).Scan(context.Background()),
++		(OpenCodeScanner{Database: broken}).Scan(context.Background()),
++	} {
++		if result.Err == nil {
++			t.Fatalf("malformed database accepted: %+v", result)
++		}
++	}
++	if !bytes.Equal(before, readFixtureBytes(t, broken)) {
++		t.Fatal("malformed database was modified")
++	}
++}
++
++func TestOpenCodeScannerRejectsOrphanedSessions(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "opencode.db")
++	db := createSQLiteFixture(t, path, `
++		CREATE TABLE project (
++			id TEXT PRIMARY KEY,
++			worktree TEXT NOT NULL,
++			name TEXT
++		);
++		CREATE TABLE "session" (
++			id TEXT PRIMARY KEY,
++			slug TEXT,
++			title TEXT,
++			project_id TEXT NOT NULL,
++			parent_id TEXT,
++			directory TEXT,
++			path TEXT,
++			time_created INTEGER NOT NULL,
++			time_updated INTEGER NOT NULL,
++			time_archived INTEGER
++		);
++	`)
++	mustExec(t, db, `INSERT INTO "session" VALUES
++		('orphan', 'orphan', 'Orphan', 'missing', NULL, '/repo', NULL, 1000, 2000, NULL)`)
++	if err := db.Close(); err != nil {
++		t.Fatal(err)
++	}
++	result := (OpenCodeScanner{Database: path}).Scan(context.Background())
++	if result.Err == nil {
++		t.Fatal("expected orphan relationship error")
++	}
++}
++
++func TestReadOnlySQLiteDoesNotMutateLiveWALFiles(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "live.db")
++	writer, err := sql.Open("sqlite", path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer writer.Close() //nolint:errcheck
++	mustExec(t, writer, `PRAGMA journal_mode=WAL`)
++	mustExec(t, writer, `PRAGMA wal_autocheckpoint=0`)
++	mustExec(t, writer, `CREATE TABLE sessions (id TEXT PRIMARY KEY)`)
++	mustExec(t, writer, `INSERT INTO sessions VALUES ('from-wal')`)
++
++	before := snapshotDirectory(t, dir)
++	scanPath := path
++	symlink := filepath.Join(t.TempDir(), "linked.db")
++	if err := os.Symlink(path, symlink); err == nil {
++		scanPath = symlink
++	}
++	reader, err := openReadOnlySQLite(context.Background(), scanPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var id string
++	if err := reader.QueryRow(`SELECT id FROM sessions`).Scan(&id); err != nil {
++		t.Fatal(err)
++	}
++	if id != "from-wal" {
++		t.Fatalf("read id = %q", id)
++	}
++	if _, err := reader.Exec(`INSERT INTO sessions VALUES ('write')`); err == nil {
++		t.Fatal("private snapshot connection accepted a write")
++	}
++	if err := reader.Close(); err != nil {
++		t.Fatal(err)
++	}
++	after := snapshotDirectory(t, dir)
++	if len(before) != len(after) {
++		t.Fatalf("directory entries changed: before=%v after=%v", mapKeys(before), mapKeys(after))
++	}
++	for name, want := range before {
++		if got, ok := after[name]; !ok || !bytes.Equal(got, want) {
++			t.Fatalf("SQLite source sidecar %q changed", name)
++		}
++	}
++}
++
++func TestReadOnlySQLiteRecoversPrivateRollbackJournal(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "rollback.db")
++	writer, err := sql.Open("sqlite", path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer writer.Close() //nolint:errcheck
++	mustExec(t, writer, `PRAGMA journal_mode=DELETE`)
++	mustExec(t, writer, `CREATE TABLE items (value TEXT)`)
++	mustExec(t, writer, `INSERT INTO items VALUES ('committed')`)
++
++	tx, err := writer.Begin()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer tx.Rollback() //nolint:errcheck
++	if _, err := tx.Exec(`UPDATE items SET value = 'uncommitted'`); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Stat(path + "-journal"); err != nil {
++		t.Fatalf("rollback journal missing: %v", err)
++	}
++
++	before := snapshotDirectory(t, dir)
++	reader, err := openReadOnlySQLite(context.Background(), path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var value string
++	if err := reader.QueryRow(`SELECT value FROM items`).Scan(&value); err != nil {
++		t.Fatal(err)
++	}
++	if value != "committed" {
++		t.Fatalf("snapshot exposed %q, want committed value", value)
++	}
++	if err := reader.Close(); err != nil {
++		t.Fatal(err)
++	}
++	after := snapshotDirectory(t, dir)
++	for name, want := range before {
++		if got, ok := after[name]; !ok || !bytes.Equal(got, want) {
++			t.Fatalf("rollback source file %q changed", name)
++		}
++	}
++}
++
++func TestSQLiteFileURIHandlesWindowsPaths(t *testing.T) {
++	if got, want := sqliteFileURIForOS(`C:\Temp\source.db`, "windows"), "file:///C:/Temp/source.db"; got != want {
++		t.Fatalf("drive URI = %q, want %q", got, want)
++	}
++	if got, want := sqliteFileURIForOS(`\\server\share\source.db`, "windows"), "file://server/share/source.db"; got != want {
++		t.Fatalf("UNC URI = %q, want %q", got, want)
++	}
++}
++
++func createSQLiteFixture(t *testing.T, path, schema string) *sql.DB {
++	t.Helper()
++	db, err := sql.Open("sqlite", path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	mustExec(t, db, schema)
++	return db
++}
++
++func mustExec(t *testing.T, db *sql.DB, query string) {
++	t.Helper()
++	if _, err := db.Exec(query); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func readFixtureBytes(t *testing.T, path string) []byte {
++	t.Helper()
++	data, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return data
++}
++
++func snapshotDirectory(t *testing.T, dir string) map[string][]byte {
++	t.Helper()
++	entries, err := os.ReadDir(dir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	result := make(map[string][]byte, len(entries))
++	for _, entry := range entries {
++		if entry.IsDir() {
++			continue
++		}
++		result[entry.Name()] = readFixtureBytes(t, filepath.Join(dir, entry.Name()))
++	}
++	return result
++}
++
++func mapKeys(values map[string][]byte) []string {
++	keys := make([]string, 0, len(values))
++	for key := range values {
++		keys = append(keys, key)
++	}
++	return keys
++}
++
++func findNativeSession(t *testing.T, sessions []core.Session, nativeID string) core.Session {
++	t.Helper()
++	for _, session := range sessions {
++		if session.NativeID == nativeID {
++			return session
++		}
++	}
++	t.Fatalf("session %q not found", nativeID)
++	return core.Session{}
++}
+diff --git a/internal/adapters/opencode.go b/internal/adapters/opencode.go
+new file mode 100644
+index 0000000..9a9e676
+--- /dev/null
++++ b/internal/adapters/opencode.go
+@@ -0,0 +1,148 @@
++package adapters
++
++import (
++	"context"
++	"database/sql"
++	"fmt"
++	"path/filepath"
++	"strings"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++type OpenCodeScanner struct {
++	Database string
++}
++
++func (s OpenCodeScanner) Name() string {
++	return "opencode"
++}
++
++func (s OpenCodeScanner) Scan(ctx context.Context) core.ScanResult {
++	result := core.ScanResult{Source: s.Name()}
++	if s.Database == ":memory:" || !core.ExistingFile(s.Database) {
++		result.Skipped = true
++		result.Message = "OpenCode database not found"
++		return result
++	}
++	db, err := openReadOnlySQLite(ctx, s.Database)
++	if err != nil {
++		result.Err = err
++		return result
++	}
++	defer db.Close() //nolint:errcheck
++
++	var orphaned int
++	if err := db.QueryRowContext(ctx, `
++		SELECT COUNT(*)
++		FROM "session" s
++		LEFT JOIN project p ON p.id = s.project_id
++		WHERE p.id IS NULL
++	`).Scan(&orphaned); err != nil {
++		result.Err = fmt.Errorf("checking OpenCode session relationships: %w", err)
++		return result
++	}
++	if orphaned > 0 {
++		result.Err = fmt.Errorf("OpenCode database has %d session(s) without a project", orphaned)
++		return result
++	}
++
++	rows, err := db.QueryContext(ctx, `
++		SELECT
++			s.id,
++			COALESCE(s.slug, ''),
++			COALESCE(s.title, ''),
++			COALESCE(s.directory, ''),
++			s.path,
++			s.time_created,
++			s.time_updated,
++			COALESCE(p.worktree, ''),
++			COALESCE(p.name, '')
++		FROM "session" s
++		JOIN project p ON p.id = s.project_id
++		WHERE s.time_archived IS NULL
++		  AND s.parent_id IS NULL
++		ORDER BY s.time_updated DESC
++	`)
++	if err != nil {
++		result.Err = fmt.Errorf("querying OpenCode sessions: %w", err)
++		return result
++	}
++	defer rows.Close()
++
++	for rows.Next() {
++		if ctx.Err() != nil {
++			result.Err = ctx.Err()
++			return result
++		}
++		var (
++			id, slug, title, directory, worktree, projectName string
++			relativePath                                      sql.NullString
++			createdMS, updatedMS                              int64
++		)
++		if err := rows.Scan(
++			&id,
++			&slug,
++			&title,
++			&directory,
++			&relativePath,
++			&createdMS,
++			&updatedMS,
++			&worktree,
++			&projectName,
++		); err != nil {
++			result.Err = err
++			return result
++		}
++		id = strings.TrimSpace(id)
++		if id == "" {
++			result.Err = fmt.Errorf("OpenCode session has empty id")
++			return result
++		}
++		projectPath := openCodeProjectPath(directory, worktree, relativePath)
++		displayTitle := strings.TrimSpace(title)
++		if displayTitle == "" {
++			displayTitle = strings.TrimSpace(slug)
++		}
++		if displayTitle == "" {
++			displayTitle = firstNonEmpty(strings.TrimSpace(projectName), "OpenCode: "+core.ProjectName(projectPath))
++		}
++
++		session := core.NewSession("opencode", id)
++		session.ProjectPath = projectPath
++		session.Agent = "opencode"
++		session.Title = core.Truncate(displayTitle, 120)
++		session.Status = core.StatusUnknown
++		session.CreatedAt = unixMilliseconds(createdMS)
++		session.LastActivityAt = unixMilliseconds(updatedMS)
++		resume := commandWithEnv(
++			"OPENCODE_DB",
++			s.Database,
++			"opencode --session "+core.ShellQuote(id),
++		)
++		session.ResumeCommand = resumeInDirectory(projectPath, resume)
++		session.RawPath = s.Database
++		result.Sessions = append(result.Sessions, session)
++	}
++	if err := rows.Err(); err != nil {
++		result.Err = err
++		return result
++	}
++	result.SessionSnapshotComplete = true
++	return result
++}
++
++func openCodeProjectPath(directory, worktree string, relativePath sql.NullString) string {
++	directory = strings.TrimSpace(directory)
++	if directory != "" {
++		return filepath.Clean(directory)
++	}
++	worktree = strings.TrimSpace(worktree)
++	if worktree == "" {
++		return ""
++	}
++	if relativePath.Valid && strings.TrimSpace(relativePath.String) != "" {
++		return filepath.Clean(filepath.Join(worktree, filepath.FromSlash(relativePath.String)))
++	}
++	return filepath.Clean(worktree)
++}
+diff --git a/internal/adapters/scanner.go b/internal/adapters/scanner.go
+index 68ef893..c60acf5 100644
+--- a/internal/adapters/scanner.go
++++ b/internal/adapters/scanner.go
+@@ -16,6 +16,8 @@ func DefaultScanners(cfg config.Config) []Scanner {
+ 	scanners := []Scanner{
+ 		ClaudeScanner{Root: cfg.Sources.ClaudeProjects},
+ 		CopilotScanner{Root: cfg.Sources.CopilotSessionState},
++		HermesHistoryScanner{Database: cfg.Sources.HermesDatabase},
++		OpenCodeScanner{Database: cfg.Sources.OpenCodeDatabase},
+ 	}
+ 	return append(scanners, LiveScanners()...)
+ }
+@@ -26,3 +28,17 @@ func LiveScanners() []Scanner {
+ 		TmuxScanner{},
+ 	}
+ }
++
++func resumeInDirectory(directory, command string) string {
++	if directory == "" {
++		return command
++	}
++	return "cd " + core.ShellQuote(directory) + " && " + command
++}
++
++func commandWithEnv(name, value, command string) string {
++	if value == "" {
++		return command
++	}
++	return name + "=" + core.ShellQuote(value) + " " + command
++}
+diff --git a/internal/adapters/sqlite.go b/internal/adapters/sqlite.go
+new file mode 100644
+index 0000000..13afcbb
+--- /dev/null
++++ b/internal/adapters/sqlite.go
+@@ -0,0 +1,206 @@
++package adapters
++
++import (
++	"context"
++	"database/sql"
++	"errors"
++	"fmt"
++	"io"
++	"net/url"
++	"os"
++	"path/filepath"
++	"runtime"
++	"strings"
++	"time"
++
++	_ "modernc.org/sqlite"
++)
++
++type readOnlySQLite struct {
++	*sql.DB
++	snapshotDir string
++}
++
++func (db *readOnlySQLite) Close() error {
++	return errors.Join(db.DB.Close(), os.RemoveAll(db.snapshotDir))
++}
++
++func openReadOnlySQLite(ctx context.Context, path string) (*readOnlySQLite, error) {
++	absolute, err := filepath.Abs(path)
++	if err != nil {
++		return nil, err
++	}
++	absolute, err = filepath.EvalSymlinks(absolute)
++	if err != nil {
++		return nil, err
++	}
++	snapshotDir, err := os.MkdirTemp("", "tss-sqlite-snapshot-")
++	if err != nil {
++		return nil, err
++	}
++	snapshotPath := filepath.Join(snapshotDir, "source.db")
++	if err := copyStableSQLiteSnapshot(ctx, absolute, snapshotPath); err != nil {
++		_ = os.RemoveAll(snapshotDir)
++		return nil, err
++	}
++
++	uri, err := url.Parse(sqliteFileURI(snapshotPath))
++	if err != nil {
++		_ = os.RemoveAll(snapshotDir)
++		return nil, err
++	}
++	query := uri.Query()
++	query.Set("mode", "rw")
++	query.Add("_pragma", "busy_timeout(5000)")
++	query.Add("_pragma", "query_only(1)")
++	uri.RawQuery = query.Encode()
++
++	db, err := sql.Open("sqlite", uri.String())
++	if err != nil {
++		_ = os.RemoveAll(snapshotDir)
++		return nil, err
++	}
++	db.SetMaxOpenConns(1)
++	if err := db.PingContext(ctx); err != nil {
++		_ = db.Close()
++		_ = os.RemoveAll(snapshotDir)
++		return nil, fmt.Errorf("opening SQLite read-only: %w", err)
++	}
++	return &readOnlySQLite{DB: db, snapshotDir: snapshotDir}, nil
++}
++
++type sqliteSnapshotState struct {
++	main    os.FileInfo
++	wal     os.FileInfo
++	journal os.FileInfo
++}
++
++func copyStableSQLiteSnapshot(ctx context.Context, source, destination string) error {
++	const attempts = 3
++	for attempt := 0; attempt < attempts; attempt++ {
++		if err := ctx.Err(); err != nil {
++			return err
++		}
++		before, err := readSQLiteSnapshotState(source)
++		if err != nil {
++			return err
++		}
++		_ = os.Remove(destination)
++		_ = os.Remove(destination + "-wal")
++		_ = os.Remove(destination + "-journal")
++		if err := copySQLiteFile(source, destination); err != nil {
++			return err
++		}
++		if before.wal != nil {
++			if err := copySQLiteFile(source+"-wal", destination+"-wal"); err != nil {
++				continue
++			}
++		}
++		if before.journal != nil {
++			if err := copySQLiteFile(source+"-journal", destination+"-journal"); err != nil {
++				continue
++			}
++		}
++		after, err := readSQLiteSnapshotState(source)
++		if err != nil {
++			return err
++		}
++		if sameSQLiteSnapshotState(before, after) {
++			return nil
++		}
++	}
++	return fmt.Errorf("SQLite database changed while creating a read-only snapshot")
++}
++
++func readSQLiteSnapshotState(path string) (sqliteSnapshotState, error) {
++	main, err := os.Stat(path)
++	if err != nil {
++		return sqliteSnapshotState{}, err
++	}
++	wal, err := os.Stat(path + "-wal")
++	if err != nil && !os.IsNotExist(err) {
++		return sqliteSnapshotState{}, err
++	}
++	if os.IsNotExist(err) {
++		wal = nil
++	}
++	journal, err := os.Stat(path + "-journal")
++	if err != nil && !os.IsNotExist(err) {
++		return sqliteSnapshotState{}, err
++	}
++	if os.IsNotExist(err) {
++		journal = nil
++	}
++	return sqliteSnapshotState{main: main, wal: wal, journal: journal}, nil
++}
++
++func sameSQLiteSnapshotState(left, right sqliteSnapshotState) bool {
++	return sameSQLiteFileState(left.main, right.main) &&
++		sameSQLiteFileState(left.wal, right.wal) &&
++		sameSQLiteFileState(left.journal, right.journal)
++}
++
++func sameSQLiteFileState(left, right os.FileInfo) bool {
++	if left == nil || right == nil {
++		return left == nil && right == nil
++	}
++	return left.Size() == right.Size() &&
++		left.ModTime() == right.ModTime()
++}
++
++func copySQLiteFile(source, destination string) (err error) {
++	input, err := os.Open(source)
++	if err != nil {
++		return err
++	}
++	defer input.Close() //nolint:errcheck
++	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
++	if err != nil {
++		return err
++	}
++	defer func() {
++		err = errors.Join(err, output.Close())
++	}()
++	if _, err := io.Copy(output, input); err != nil {
++		return err
++	}
++	return output.Sync()
++}
++
++func sqliteFileURI(path string) string {
++	return sqliteFileURIForOS(path, runtime.GOOS)
++}
++
++func sqliteFileURIForOS(path, goos string) string {
++	if goos != "windows" {
++		return (&url.URL{Scheme: "file", Path: path}).String()
++	}
++	slashed := strings.ReplaceAll(path, `\`, "/")
++	if strings.HasPrefix(slashed, "//") {
++		withoutPrefix := strings.TrimPrefix(slashed, "//")
++		host, rest, found := strings.Cut(withoutPrefix, "/")
++		if found {
++			return (&url.URL{Scheme: "file", Host: host, Path: "/" + rest}).String()
++		}
++	}
++	if len(slashed) >= 2 && slashed[1] == ':' {
++		slashed = "/" + slashed
++	}
++	return (&url.URL{Scheme: "file", Path: slashed}).String()
++}
++
++func unixSeconds(value float64) time.Time {
++	if value <= 0 {
++		return time.Time{}
++	}
++	seconds := int64(value)
++	nanoseconds := int64((value - float64(seconds)) * float64(time.Second))
++	return time.Unix(seconds, nanoseconds).UTC()
++}
++
++func unixMilliseconds(value int64) time.Time {
++	if value <= 0 {
++		return time.Time{}
++	}
++	return time.UnixMilli(value).UTC()
++}
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index d936efa..0fd67d5 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -134,10 +134,8 @@ func (a *appContext) scanCmd() *cobra.Command {
+ 					reports = append(reports, r)
+ 					continue
+ 				}
+-				for _, sess := range res.Sessions {
+-					if err := db.UpsertSession(ctx, sess); err != nil {
+-						return err
+-					}
++				if err := persistScanSessions(ctx, db, res); err != nil {
++					return err
+ 				}
+ 				if err := persistScanRuntimes(ctx, db, res); err != nil {
+ 					return err
+@@ -166,11 +164,23 @@ func (a *appContext) scanCmd() *cobra.Command {
+ 			return nil
+ 		},
+ 	}
+-	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, herdr, tmux)")
++	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, hermes, opencode, herdr, tmux)")
+ 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON")
+ 	return cmd
+ }
+ 
++func persistScanSessions(ctx context.Context, db *store.Store, result core.ScanResult) error {
++	if result.Err == nil && result.SessionSnapshotComplete {
++		return db.ReplaceSessions(ctx, result.Source, result.Sessions)
++	}
++	for _, session := range result.Sessions {
++		if err := db.UpsertSession(ctx, session); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
+ func persistScanRuntimes(ctx context.Context, db *store.Store, result core.ScanResult) error {
+ 	if result.Err == nil && result.SnapshotComplete {
+ 		return db.ReplaceRuntimes(ctx, result.Source, result.Runtimes)
+@@ -276,6 +286,8 @@ func (a *appContext) doctorCmd() *cobra.Command {
+ 			fmt.Println()
+ 			fmt.Printf("Claude projects: %s [%s]\n", cfg.Sources.ClaudeProjects, existsLabel(cfg.Sources.ClaudeProjects))
+ 			fmt.Printf("Copilot session-state: %s [%s]\n", cfg.Sources.CopilotSessionState, existsLabel(cfg.Sources.CopilotSessionState))
++			fmt.Printf("Hermes database: %s [%s]\n", cfg.Sources.HermesDatabase, existsLabel(cfg.Sources.HermesDatabase))
++			fmt.Printf("OpenCode database: %s [%s]\n", cfg.Sources.OpenCodeDatabase, existsLabel(cfg.Sources.OpenCodeDatabase))
+ 			fmt.Println()
+ 			for _, tool := range []string{"herdr", "tmux", "sqlite3"} {
+ 				path, err := exec.LookPath(tool)
+@@ -828,6 +840,10 @@ func sourcePath(cfg config.Config, source string) string {
+ 		return cfg.Sources.ClaudeProjects
+ 	case "copilot":
+ 		return cfg.Sources.CopilotSessionState
++	case "hermes":
++		return cfg.Sources.HermesDatabase
++	case "opencode":
++		return cfg.Sources.OpenCodeDatabase
+ 	default:
+ 		return ""
+ 	}
+diff --git a/internal/cli/scan_runtime_test.go b/internal/cli/scan_runtime_test.go
+index 550a9a7..2a9088a 100644
+--- a/internal/cli/scan_runtime_test.go
++++ b/internal/cli/scan_runtime_test.go
+@@ -62,3 +62,38 @@ func TestPersistScanRuntimesOnlyPrunesCompleteSnapshots(t *testing.T) {
+ 		t.Fatalf("complete empty scan should prune row, got %v", err)
+ 	}
+ }
++
++func TestPersistScanSessionsOnlyPrunesCompleteSnapshots(t *testing.T) {
++	db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close() //nolint:errcheck
++	ctx := context.Background()
++
++	session := core.NewSession("opencode", "session-1")
++	session.Title = "Session"
++	if err := db.UpsertSession(ctx, session); err != nil {
++		t.Fatal(err)
++	}
++	if err := persistScanSessions(ctx, db, core.ScanResult{
++		Source:  "opencode",
++		Skipped: true,
++		Message: "database unavailable",
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.GetSession(ctx, session.ID); err != nil {
++		t.Fatalf("incomplete scan pruned prior session: %v", err)
++	}
++
++	if err := persistScanSessions(ctx, db, core.ScanResult{
++		Source:                  "opencode",
++		SessionSnapshotComplete: true,
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.GetSession(ctx, session.ID); !errors.Is(err, sql.ErrNoRows) {
++		t.Fatalf("complete empty scan should prune session, got %v", err)
++	}
++}
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 4bc2503..4f34812 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -4,6 +4,7 @@ import (
+ 	"errors"
+ 	"os"
+ 	"path/filepath"
++	"runtime"
+ 	"strings"
+ 
+ 	"gopkg.in/yaml.v3"
+@@ -24,6 +25,8 @@ type LiveConfig struct {
+ type SourcesConfig struct {
+ 	ClaudeProjects      string `yaml:"claude_projects"`
+ 	CopilotSessionState string `yaml:"copilot_session_state"`
++	HermesDatabase      string `yaml:"hermes_database"`
++	OpenCodeDatabase    string `yaml:"opencode_database"`
+ }
+ 
+ type SummaryConfig struct {
+@@ -66,6 +69,8 @@ func DefaultConfig() Config {
+ 		Sources: SourcesConfig{
+ 			ClaudeProjects:      filepath.Join(claudeRoot, "projects"),
+ 			CopilotSessionState: filepath.Join(copilotRoot, "session-state"),
++			HermesDatabase:      defaultHermesDatabase(home),
++			OpenCodeDatabase:    defaultOpenCodeDatabase(home),
+ 		},
+ 	}
+ }
+@@ -89,6 +94,8 @@ func Load(path string) (Config, error) {
+ 	cfg.Database = ExpandPath(firstNonEmpty(cfg.Database, filepath.Join(cfg.DataDir, "sessions.db")))
+ 	cfg.Sources.ClaudeProjects = ExpandPath(firstNonEmpty(cfg.Sources.ClaudeProjects, DefaultConfig().Sources.ClaudeProjects))
+ 	cfg.Sources.CopilotSessionState = ExpandPath(firstNonEmpty(cfg.Sources.CopilotSessionState, DefaultConfig().Sources.CopilotSessionState))
++	cfg.Sources.HermesDatabase = ExpandPath(firstNonEmpty(cfg.Sources.HermesDatabase, DefaultConfig().Sources.HermesDatabase))
++	cfg.Sources.OpenCodeDatabase = ExpandPath(firstNonEmpty(cfg.Sources.OpenCodeDatabase, DefaultConfig().Sources.OpenCodeDatabase))
+ 	if cfg.Live.DefaultBackend == "" {
+ 		cfg.Live.DefaultBackend = "herdr"
+ 	}
+@@ -122,3 +129,54 @@ func firstNonEmpty(values ...string) string {
+ 	}
+ 	return ""
+ }
++
++func defaultHermesDatabase(home string) string {
++	hermesHome := strings.TrimSpace(os.Getenv("HERMES_HOME"))
++	var base string
++	if hermesHome != "" {
++		base = ExpandPath(hermesHome)
++		if filepath.Base(filepath.Dir(base)) == "profiles" {
++			return filepath.Join(base, "state.db")
++		}
++	} else {
++		base = hermesBaseDir(home, runtime.GOOS, os.Getenv("LOCALAPPDATA"))
++	}
++	if os.Getenv("HERMES_S6_SUPERVISED_CHILD") == "" {
++		profile, err := os.ReadFile(filepath.Join(base, "active_profile"))
++		if err == nil {
++			name := strings.TrimSpace(string(profile))
++			if name != "" && name != "default" && filepath.Base(name) == name {
++				return filepath.Join(base, "profiles", name, "state.db")
++			}
++		}
++	}
++	return filepath.Join(base, "state.db")
++}
++
++func defaultOpenCodeDatabase(home string) string {
++	dataDir := openCodeDataDir(home)
++	if override := os.Getenv("OPENCODE_DB"); override != "" {
++		if override == ":memory:" || filepath.IsAbs(override) {
++			return override
++		}
++		return filepath.Join(dataDir, "opencode", override)
++	}
++	return filepath.Join(dataDir, "opencode", "opencode.db")
++}
++
++func openCodeDataDir(home string) string {
++	if dataDir := os.Getenv("XDG_DATA_HOME"); dataDir != "" {
++		return ExpandPath(dataDir)
++	}
++	return filepath.Join(home, ".local", "share")
++}
++
++func hermesBaseDir(home, goos, localAppData string) string {
++	if goos == "windows" {
++		if localAppData == "" {
++			localAppData = filepath.Join(home, "AppData", "Local")
++		}
++		return filepath.Join(localAppData, "hermes")
++	}
++	return filepath.Join(home, ".hermes")
++}
+diff --git a/internal/config/config_test.go b/internal/config/config_test.go
+new file mode 100644
+index 0000000..38f7017
+--- /dev/null
++++ b/internal/config/config_test.go
+@@ -0,0 +1,73 @@
++package config
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++func TestDefaultHermesDatabaseHonorsHomeAndActiveProfile(t *testing.T) {
++	home := t.TempDir()
++	customRoot := filepath.Join(home, "custom")
++	if err := os.MkdirAll(customRoot, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(customRoot, "active_profile"), []byte("coder\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("HERMES_HOME", customRoot)
++	if got, want := defaultHermesDatabase(home), filepath.Join(customRoot, "profiles", "coder", "state.db"); got != want {
++		t.Fatalf("root HERMES_HOME path = %q, want %q", got, want)
++	}
++
++	directProfile := filepath.Join(customRoot, "profiles", "direct")
++	t.Setenv("HERMES_HOME", directProfile)
++	if got, want := defaultHermesDatabase(home), filepath.Join(directProfile, "state.db"); got != want {
++		t.Fatalf("profile HERMES_HOME path = %q, want %q", got, want)
++	}
++
++	t.Setenv("HERMES_HOME", "")
++	base := filepath.Join(home, ".hermes")
++	if err := os.MkdirAll(base, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(base, "active_profile"), []byte("coder\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	want := filepath.Join(base, "profiles", "coder", "state.db")
++	if got := defaultHermesDatabase(home); got != want {
++		t.Fatalf("profile path = %q, want %q", got, want)
++	}
++}
++
++func TestDefaultOpenCodeDatabaseHonorsOverrides(t *testing.T) {
++	home := t.TempDir()
++	xdg := filepath.Join(home, "data")
++	t.Setenv("XDG_DATA_HOME", xdg)
++	t.Setenv("OPENCODE_DB", "custom.db")
++	want := filepath.Join(xdg, "opencode", "custom.db")
++	if got := defaultOpenCodeDatabase(home); got != want {
++		t.Fatalf("relative override = %q, want %q", got, want)
++	}
++
++	absolute := filepath.Join(home, "absolute.db")
++	t.Setenv("OPENCODE_DB", absolute)
++	if got := defaultOpenCodeDatabase(home); got != absolute {
++		t.Fatalf("absolute override = %q", got)
++	}
++}
++
++func TestOpenCodeDataDirDefaultsToXDGConvention(t *testing.T) {
++	home := t.TempDir()
++	t.Setenv("XDG_DATA_HOME", "")
++	if got, want := openCodeDataDir(home), filepath.Join(home, ".local", "share"); got != want {
++		t.Fatalf("data dir = %q, want %q", got, want)
++	}
++}
++
++func TestHermesBaseDirUsesWindowsLocalAppData(t *testing.T) {
++	home := `C:\Users\test`
++	if got, want := hermesBaseDir(home, "windows", `D:\Local`), filepath.Join(`D:\Local`, "hermes"); got != want {
++		t.Fatalf("Hermes Windows base = %q, want %q", got, want)
++	}
++}
+diff --git a/internal/core/model.go b/internal/core/model.go
+index e002013..63b4d7b 100644
+--- a/internal/core/model.go
++++ b/internal/core/model.go
+@@ -54,13 +54,14 @@ type RuntimeInstance struct {
+ }
+ 
+ type ScanResult struct {
+-	Source           string
+-	Sessions         []Session
+-	Runtimes         []RuntimeInstance
+-	Skipped          bool
+-	SnapshotComplete bool
+-	Message          string
+-	Err              error
++	Source                  string
++	Sessions                []Session
++	Runtimes                []RuntimeInstance
++	Skipped                 bool
++	SessionSnapshotComplete bool
++	SnapshotComplete        bool
++	Message                 string
++	Err                     error
+ }
+ 
+ func CanonicalID(source, nativeID string) string {
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 82dbc52..98bbef8 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -142,6 +142,68 @@ func (s *Store) UpsertSource(ctx context.Context, id, kind, path, lastError stri
+ }
+ 
+ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
++	if strings.TrimSpace(sess.Source) == "" || strings.TrimSpace(sess.NativeID) == "" {
++		return fmt.Errorf("session source and native id are required")
++	}
++	return upsertSession(ctx, s.db, sess, false)
++}
++
++// ReplaceSessions atomically replaces one source's authoritative historical
++// snapshot. Existing manual titles, pins, and tags survive rows that remain.
++func (s *Store) ReplaceSessions(ctx context.Context, source string, sessions []core.Session) error {
++	source = strings.TrimSpace(source)
++	if source == "" {
++		return fmt.Errorf("session source is required")
++	}
++	normalized := make([]core.Session, len(sessions))
++	seen := make(map[string]struct{}, len(sessions))
++	for index, session := range sessions {
++		if session.Source == "" {
++			session.Source = source
++		}
++		if session.Source != source {
++			return fmt.Errorf("session source %q does not match snapshot source %q", session.Source, source)
++		}
++		session.NativeID = strings.TrimSpace(session.NativeID)
++		if session.NativeID == "" {
++			return fmt.Errorf("session native id is required")
++		}
++		if _, exists := seen[session.NativeID]; exists {
++			return fmt.Errorf("duplicate native session id %q for source %q", session.NativeID, source)
++		}
++		seen[session.NativeID] = struct{}{}
++		normalized[index] = session
++	}
++
++	tx, err := s.db.BeginTx(ctx, nil)
++	if err != nil {
++		return err
++	}
++	defer tx.Rollback() //nolint:errcheck
++
++	for _, session := range normalized {
++		if err := upsertSession(ctx, tx, session, true); err != nil {
++			return err
++		}
++	}
++
++	args := []any{source}
++	query := `DELETE FROM sessions WHERE source = ?`
++	if len(normalized) > 0 {
++		placeholders := make([]string, 0, len(normalized))
++		for _, session := range normalized {
++			placeholders = append(placeholders, "?")
++			args = append(args, session.NativeID)
++		}
++		query += ` AND native_id NOT IN (` + strings.Join(placeholders, ",") + `)`
++	}
++	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
++		return err
++	}
++	return tx.Commit()
++}
++
++func upsertSession(ctx context.Context, executor dbExecer, sess core.Session, replaceCreatedAt bool) error {
+ 	now := time.Now().UTC()
+ 	sess.UpdatedAt = now
+ 	if sess.CreatedAt.IsZero() {
+@@ -153,7 +215,7 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
+ 	projectID := ""
+ 	if sess.ProjectPath != "" {
+ 		projectID = core.ProjectID(sess.ProjectPath)
+-		if err := s.upsertProject(ctx, projectID, sess.ProjectPath); err != nil {
++		if err := upsertProject(ctx, executor, projectID, sess.ProjectPath); err != nil {
+ 			return err
+ 		}
+ 	}
+@@ -161,7 +223,7 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
+ 	if titleSource == "" {
+ 		titleSource = "scanner"
+ 	}
+-	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions
++	_, err := executor.ExecContext(ctx, `INSERT INTO sessions
+ 		(id, source, native_id, project_id, project_path, agent, title, title_source, goal_summary, status,
+ 		 pinned, tags, last_activity_at, created_at, updated_at, resume_command, attach_command, raw_path)
+ 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+@@ -174,13 +236,14 @@ func (s *Store) UpsertSession(ctx context.Context, sess core.Session) error {
+ 			goal_summary = CASE WHEN excluded.goal_summary != '' THEN excluded.goal_summary ELSE sessions.goal_summary END,
+ 			status = excluded.status,
+ 			last_activity_at = excluded.last_activity_at,
++			created_at = CASE WHEN ? = 1 AND excluded.created_at != '' THEN excluded.created_at ELSE sessions.created_at END,
+ 			updated_at = excluded.updated_at,
+ 			resume_command = excluded.resume_command,
+ 			attach_command = excluded.attach_command,
+ 			raw_path = excluded.raw_path`,
+ 		sess.ID, sess.Source, sess.NativeID, projectID, sess.ProjectPath, sess.Agent, sess.Title, titleSource,
+ 		sess.GoalSummary, sess.Status, boolToInt(sess.Pinned), sess.Tags, encodeTime(sess.LastActivityAt), encodeTime(sess.CreatedAt),
+-		encodeTime(sess.UpdatedAt), sess.ResumeCommand, sess.AttachCommand, sess.RawPath)
++		encodeTime(sess.UpdatedAt), sess.ResumeCommand, sess.AttachCommand, sess.RawPath, boolToInt(replaceCreatedAt))
+ 	return err
+ }
+ 
+@@ -227,11 +290,11 @@ func (s *Store) ReplaceRuntimes(ctx context.Context, backend string, runtimes []
+ 	return tx.Commit()
+ }
+ 
+-type runtimeExecer interface {
++type dbExecer interface {
+ 	ExecContext(context.Context, string, ...any) (sql.Result, error)
+ }
+ 
+-func upsertRuntime(ctx context.Context, executor runtimeExecer, rt core.RuntimeInstance) error {
++func upsertRuntime(ctx context.Context, executor dbExecer, rt core.RuntimeInstance) error {
+ 	_, err := executor.ExecContext(ctx, `INSERT INTO runtime_instances
+ 		(id, session_id, backend, native_id, surface, project_path, command, status, attach_command, updated_at)
+ 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+@@ -415,8 +478,12 @@ func (s *Store) CountSessions(ctx context.Context) (int, error) {
+ }
+ 
+ func (s *Store) upsertProject(ctx context.Context, id, path string) error {
++	return upsertProject(ctx, s.db, id, path)
++}
++
++func upsertProject(ctx context.Context, executor dbExecer, id, path string) error {
+ 	now := time.Now().UTC().Format(time.RFC3339Nano)
+-	_, err := s.db.ExecContext(ctx, `INSERT INTO projects (id, path, name, updated_at)
++	_, err := executor.ExecContext(ctx, `INSERT INTO projects (id, path, name, updated_at)
+ 		VALUES (?, ?, ?, ?)
+ 		ON CONFLICT(path) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
+ 		id, path, core.ProjectName(path), now)
+diff --git a/internal/store/store_test.go b/internal/store/store_test.go
+index 5be67e0..c742dd2 100644
+--- a/internal/store/store_test.go
++++ b/internal/store/store_test.go
+@@ -17,19 +17,19 @@ func TestUpsertAndGetSession(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	defer db.Close() //nolint:errcheck
+-	sess := core.NewSession("test", "native")
+-	sess.ProjectPath = t.TempDir()
+-	sess.Agent = "agent"
+-	sess.Title = "Test session"
+-	sess.LastActivityAt = time.Now().UTC()
+-	if err := db.UpsertSession(context.Background(), sess); err != nil {
++	session := core.NewSession("test", "native")
++	session.ProjectPath = t.TempDir()
++	session.Agent = "agent"
++	session.Title = "Test session"
++	session.LastActivityAt = time.Now().UTC()
++	if err := db.UpsertSession(context.Background(), session); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	got, err := db.GetSession(context.Background(), sess.ID[:8])
++	got, err := db.GetSession(context.Background(), session.ID[:8])
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if got.ID != sess.ID || got.Title != sess.Title {
++	if got.ID != session.ID || got.Title != session.Title {
+ 		t.Fatalf("unexpected session: %#v", got)
+ 	}
+ }
+@@ -79,3 +79,79 @@ func TestReplaceRuntimesIsAtomicPerBackend(t *testing.T) {
+ 		t.Fatalf("empty complete snapshot did not clear backend: %v", err)
+ 	}
+ }
++
++func TestReplaceSessionsPreservesManualMetadataAndPrunes(t *testing.T) {
++	db, err := Open(filepath.Join(t.TempDir(), "sessions.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close() //nolint:errcheck
++	ctx := context.Background()
++
++	keep := core.NewSession("hermes", "keep")
++	keep.Title = "Scanner title"
++	keep.ProjectPath = "/repo"
++	keep.CreatedAt = time.Unix(100, 0).UTC()
++	remove := core.NewSession("hermes", "remove")
++	remove.Title = "Remove me"
++	if err := db.ReplaceSessions(ctx, "hermes", []core.Session{keep, remove}); err != nil {
++		t.Fatal(err)
++	}
++	if err := db.UpdateTitle(ctx, keep.ID, "Manual title"); err != nil {
++		t.Fatal(err)
++	}
++	if err := db.UpdatePinned(ctx, keep.ID, true); err != nil {
++		t.Fatal(err)
++	}
++	if err := db.UpdateTags(ctx, keep.ID, "review,mvp"); err != nil {
++		t.Fatal(err)
++	}
++
++	keep.Title = "New scanner title"
++	keep.ProjectPath = "/repo/new"
++	keep.CreatedAt = time.Unix(200, 0).UTC()
++	if err := db.ReplaceSessions(ctx, "hermes", []core.Session{keep}); err != nil {
++		t.Fatal(err)
++	}
++	got, err := db.GetSession(ctx, keep.ID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Title != "Manual title" ||
++		!got.Pinned ||
++		got.Tags != "review,mvp" ||
++		got.ProjectPath != "/repo/new" ||
++		got.CreatedAt.Unix() != 200 {
++		t.Fatalf("manual metadata or scanner update lost: %+v", got)
++	}
++	if _, err := db.GetSession(ctx, remove.ID); !errors.Is(err, sql.ErrNoRows) {
++		t.Fatalf("removed source session still present: %v", err)
++	}
++}
++
++func TestUpsertSessionPreservesLiveCreationTime(t *testing.T) {
++	db, err := Open(filepath.Join(t.TempDir(), "sessions.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close() //nolint:errcheck
++	ctx := context.Background()
++
++	session := core.NewSession("tmux", "pane")
++	session.Title = "Live"
++	session.CreatedAt = time.Unix(100, 0).UTC()
++	if err := db.UpsertSession(ctx, session); err != nil {
++		t.Fatal(err)
++	}
++	session.CreatedAt = time.Unix(200, 0).UTC()
++	if err := db.UpsertSession(ctx, session); err != nil {
++		t.Fatal(err)
++	}
++	got, err := db.GetSession(ctx, session.ID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.CreatedAt.Unix() != 100 {
++		t.Fatalf("live upsert reset creation time: %s", got.CreatedAt)
++	}
++}
