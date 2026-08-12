@@ -72,9 +72,9 @@ bounded first-line metadata reads, exact thread identities, optional indexed
 names, source filtering, deduplication, and source-qualified resume commands.
 Archived/compressed rollouts and t3code remain separate work.
 
-## Next - operator learning runbook
+## Delivered - operator learning runbook
 
-`operator-learning-runbook` is registered and unblocked. It adapts the
+`operator-learning-runbook` adapts the
 [teach skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/teach)
 into a `tss` operator curriculum: a concrete mission, trusted annotated
 resources, canonical terminology, printable references, short practice
@@ -92,7 +92,7 @@ commands with privacy-safe synthetic data.
 | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
 | `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. |
 | `codex-session-adapter` | Codex historical adapter | Add active Codex JSONL rollout metadata, names, exact resume, filtering, and reconciliation. | Applied; archived and compressed rollouts remain deferred. |
-| `operator-learning-runbook` | Operator onboarding | Build a mission-driven runbook and progressive learning workspace for discovering, curating, resuming, monitoring, and troubleshooting sessions. | Requested and unblocked; adapt the teach skill rather than copying its workspace layout blindly. |
+| `operator-learning-runbook` | Operator onboarding | Build a mission-driven runbook and progressive learning workspace for discovering, curating, resuming, monitoring, and troubleshooting sessions. | Applied; reusable material is committed and individual learning evidence stays local. |
 | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
 
 ## Milestones
@@ -185,7 +185,7 @@ Target:
 
 ### M7 - Operator learning
 
-Next:
+Delivered:
 
 - Define an observable operator mission and success criteria.
 - Curate annotated primary resources for `tss` and each supported integration.

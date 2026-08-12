@@ -26,6 +26,8 @@ go.work.sum
 
 # Local scratch and retrospective notes
 .gitignored/
+docs/learn/NOTES.md
+docs/learn/learning-records/
 
 # Local build artifacts (Makefile writes here; see `make build`).
 /bin/

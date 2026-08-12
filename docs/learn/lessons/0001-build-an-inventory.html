@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Lesson 1: Build a trustworthy tss inventory</title>
+    <link rel="stylesheet" href="../assets/course.css">
+    <script src="../assets/lesson.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to lesson</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <p class="eyebrow">Lesson 1 of 4</p>
+        <h1>Build a trustworthy inventory</h1>
+        <p class="lede">
+          Learn to distinguish a healthy scan, an optional skip, an incomplete
+          snapshot, and a source error.
+        </p>
+      </div>
+    </header>
+    <nav class="course-nav" aria-label="Course">
+      <a href="../README.md">Course index</a>
+      <a href="../MISSION.md">Mission</a>
+      <a href="../GLOSSARY.md">Glossary</a>
+      <a href="../reference/first-day-runbook.html">Runbook</a>
+      <a aria-current="page" href="0001-build-an-inventory.html">Lesson 1</a>
+    </nav>
+
+    <main id="content">
+      <div class="outcome">
+        <p><span class="label">Outcome</span>Judge whether a scan is safe to trust.</p>
+        <p><span class="label">Time</span>About 8 minutes.</p>
+      </div>
+
+      <section aria-labelledby="model-heading">
+        <h2 id="model-heading">A scan updates a projection</h2>
+        <p>
+          The source tool owns its historical store. <code>tss scan</code> reads
+          supported metadata and writes a normalized local inventory. It never
+          makes the inventory more authoritative than the evidence it received.
+        </p>
+        <div class="callout">
+          <p>
+            <span class="badge badge--write">Local inventory write</span>
+            Source stores remain read-only, but <code>scan</code> does mutate the
+            local <code>tss</code> inventory.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="practice-heading">
+        <h2 id="practice-heading">Practice: classify each provider report</h2>
+        <ol class="steps">
+          <li>
+            Check configured paths and optional tools:
+            <pre><code>tss doctor</code></pre>
+          </li>
+          <li>
+            Ask for structured scan reports:
+            <pre><code>tss scan --json</code></pre>
+          </li>
+          <li>
+            Read this synthetic result:
+            <pre><code>[
+  {
+    "source": "claude",
+    "sessions": 4,
+    "runtimes": 0,
+    "skipped": false
+  },
+  {
+    "source": "codex",
+    "sessions": 2,
+    "runtimes": 0,
+    "skipped": false,
+    "message": "Codex scan incomplete: skipped 1 unreadable rollout"
+  },
+  {
+    "source": "herdr",
+    "sessions": 0,
+    "runtimes": 0,
+    "skipped": true,
+    "message": "Herdr is unavailable"
+  }
+]</code></pre>
+          </li>
+        </ol>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Claude</td>
+              <td>Complete result; its source snapshot can reconcile.</td>
+            </tr>
+            <tr>
+              <td>Codex</td>
+              <td>Valid rows refresh, but prior Codex rows are not pruned.</td>
+            </tr>
+            <tr>
+              <td>Herdr</td>
+              <td>Optional live provider skipped; historical scans can still succeed.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="retrieve-heading">
+        <h2 id="retrieve-heading">Retrieve the rule</h2>
+        <form
+          class="quiz"
+          data-quiz
+          data-answer="b"
+          data-correct-message="Correct. Incomplete evidence may refresh known-good rows, but it cannot justify deletion."
+          data-incorrect-message="Not yet. Incomplete evidence must preserve prior rows while accepting valid updates."
+          action="#"
+        >
+          <fieldset>
+            <legend>A Codex scan returns two valid sessions and one unreadable active rollout. What happens?</legend>
+            <label><input type="radio" name="answer" value="a"> Valid rows refresh and prior Codex rows are pruned.</label>
+            <label><input type="radio" name="answer" value="b"> Valid rows refresh and prior Codex rows remain preserved.</label>
+            <label><input type="radio" name="answer" value="c"> No rows refresh and prior Codex rows are deleted.</label>
+          </fieldset>
+          <button type="submit">Check decision</button>
+          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
+        </form>
+        <noscript>
+          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
+        </noscript>
+        <details>
+          <summary>Reveal answer and reasoning</summary>
+          <p>
+            Answer B. An incomplete snapshot can upsert valid sessions, but it
+            cannot prove that absent rows disappeared upstream.
+          </p>
+        </details>
+      </section>
+
+      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
+        <h2 id="checkpoint-heading">Checkpoint</h2>
+        <p>
+          You are ready for lesson 2 when you can explain why "skipped" is not
+          automatically an error and why "incomplete" disables pruning.
+        </p>
+      </section>
+
+      <nav class="lesson-links" aria-label="Lesson navigation">
+        <a href="../README.md">Back to course index</a>
+        <a href="0002-find-the-right-session.html">Next: find the right session</a>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Primary source:
+        <a href="../../source-adapters.md">Historical source adapters</a>.
+        Ask the agent about any scan result you cannot classify.
+      </p>
+    </footer>
+  </body>
+</html>

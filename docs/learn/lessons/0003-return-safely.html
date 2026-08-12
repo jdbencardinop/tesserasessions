@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Lesson 3: Return safely with tss</title>
+    <link rel="stylesheet" href="../assets/course.css">
+    <script src="../assets/lesson.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to lesson</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <p class="eyebrow">Lesson 3 of 4</p>
+        <h1>Return without surprises</h1>
+        <p class="lede">
+          Choose attach, native resume, or a new workspace—and preview the exact
+          command before it runs.
+        </p>
+      </div>
+    </header>
+    <nav class="course-nav" aria-label="Course">
+      <a href="../README.md">Course index</a>
+      <a href="../MISSION.md">Mission</a>
+      <a href="../GLOSSARY.md">Glossary</a>
+      <a href="../reference/first-day-runbook.html">Runbook</a>
+      <a aria-current="page" href="0003-return-safely.html">Lesson 3</a>
+    </nav>
+
+    <main id="content">
+      <div class="outcome">
+        <p><span class="label">Outcome</span>Choose and preview the correct return path.</p>
+        <p><span class="label">Time</span>About 10 minutes.</p>
+      </div>
+
+      <div class="callout">
+        <p>
+          <code>codex-demo123</code> is synthetic. Use a session ID you inspected
+          with <code>tss show</code> when practicing locally.
+        </p>
+      </div>
+
+      <section aria-labelledby="paths-heading">
+        <h2 id="paths-heading">Three verbs, three intentions</h2>
+        <div class="reference-card">
+          <h3>Attach</h3>
+          <p>
+            Return to a stored matching live runtime when the preferred backend
+            has one. Otherwise, fall back to the historical session's native
+            resume command.
+          </p>
+          <pre><code>tss attach codex-demo123 --print</code></pre>
+        </div>
+        <div class="reference-card">
+          <h3>Resume</h3>
+          <p>
+            Resume is the source-native fallback stored on a historical
+            session. You normally reach it through <code>tss attach</code>, which
+            preserves source-specific environment such as
+            <code>CODEX_HOME</code>.
+          </p>
+        </div>
+        <div class="reference-card">
+          <h3>Open</h3>
+          <p>
+            Create a new Herdr workspace or tmux session in the same project
+            directory. This does not resume the old conversation.
+          </p>
+          <pre><code>tss open codex-demo123 --print</code></pre>
+        </div>
+      </section>
+
+      <section aria-labelledby="preview-heading">
+        <h2 id="preview-heading">Practice: inspect, preview, compare</h2>
+        <ol class="steps">
+          <li>
+            Reconfirm the selected record:
+            <pre><code>tss show codex-demo123</code></pre>
+          </li>
+          <li>
+            Preview the default return path:
+            <pre><code>tss attach codex-demo123 --print</code></pre>
+          </li>
+          <li>
+            If you need to compare a backend explicitly:
+            <pre><code>tss attach codex-demo123 --backend tmux --print
+tss attach codex-demo123 --backend herdr --print</code></pre>
+          </li>
+          <li>
+            Execute only after the command, project path, and identity match
+            your intent:
+            <pre><code>tss attach codex-demo123</code></pre>
+          </li>
+        </ol>
+        <div class="callout callout--warning">
+          <p>
+            <span class="badge badge--interactive">Interactive</span>
+            Removing <code>--print</code> may attach the terminal or start the
+            source agent. Command preview is the review boundary.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="control-heading">
+        <h2 id="control-heading">Apply the same boundary to live control</h2>
+        <pre><code>tss send codex-demo123 "summarize the current blocker" --print
+tss read codex-demo123 --lines 80 --print
+tss run codex-demo123 --print -- go test ./...</code></pre>
+        <p>
+          These commands require a suitable live runtime. Preview mode lets you
+          inspect backend targeting and quoting before any input or command is
+          sent.
+        </p>
+      </section>
+
+      <section aria-labelledby="retrieve-heading">
+        <h2 id="retrieve-heading">Choose the return path</h2>
+        <form
+          class="quiz"
+          data-quiz
+          data-answer="b"
+          data-correct-message="Correct. Attach preview can reveal the native resume fallback without starting it."
+          data-incorrect-message="Try again. You want the old conversation, not merely a new shell in its directory."
+          action="#"
+        >
+          <fieldset>
+            <legend>No live runtime matches, but the historical Codex thread is resumable. You want that conversation. What comes first?</legend>
+            <label><input type="radio" name="answer" value="a"> tss open codex-demo123 --print</label>
+            <label><input type="radio" name="answer" value="b"> tss attach codex-demo123 --print</label>
+            <label><input type="radio" name="answer" value="c"> tss run codex-demo123 -- go test</label>
+          </fieldset>
+          <button type="submit">Check decision</button>
+          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
+        </form>
+        <noscript>
+          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
+        </noscript>
+        <details>
+          <summary>Reveal answer and reasoning</summary>
+          <p>
+            Answer B. Attach preview chooses the stored live target when one
+            exists and otherwise prints the exact source-native resume command.
+            Open would create a new environment, not restore the conversation.
+          </p>
+        </details>
+      </section>
+
+      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
+        <h2 id="checkpoint-heading">Checkpoint</h2>
+        <p>
+          You are ready for lesson 4 when you can explain the difference between
+          returning to an existing conversation and opening a new environment.
+        </p>
+      </section>
+
+      <nav class="lesson-links" aria-label="Lesson navigation">
+        <a href="0002-find-the-right-session.html">Previous: find a session</a>
+        <a href="0004-diagnose-live-state.html">Next: diagnose live state</a>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Primary source:
+        <a href="../../source-adapters.md">Historical source adapters</a>.
+        Ask the agent to explain a generated command before executing it.
+      </p>
+    </footer>
+  </body>
+</html>

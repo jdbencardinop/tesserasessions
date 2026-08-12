@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Lesson 4: Diagnose live state with tss</title>
+    <link rel="stylesheet" href="../assets/course.css">
+    <script src="../assets/lesson.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to lesson</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <p class="eyebrow">Lesson 4 of 4</p>
+        <h1>Separate presence from state</h1>
+        <p class="lede">
+          Ask whether a runtime exists and what its agent is doing as two
+          different questions.
+        </p>
+      </div>
+    </header>
+    <nav class="course-nav" aria-label="Course">
+      <a href="../README.md">Course index</a>
+      <a href="../MISSION.md">Mission</a>
+      <a href="../GLOSSARY.md">Glossary</a>
+      <a href="../reference/first-day-runbook.html">Runbook</a>
+      <a aria-current="page" href="0004-diagnose-live-state.html">Lesson 4</a>
+    </nav>
+
+    <main id="content">
+      <div class="outcome">
+        <p><span class="label">Outcome</span>Interpret live evidence without inventing certainty.</p>
+        <p><span class="label">Time</span>About 10 minutes.</p>
+      </div>
+
+      <section aria-labelledby="axes-heading">
+        <h2 id="axes-heading">Two axes prevent one overloaded status</h2>
+        <p>
+          <code>runtime_presence</code> answers whether a matching live runtime
+          was observed. <code>agent_state</code> answers what the observed agent
+          is doing. Neither axis replaces local topology, failures, locks, or
+          final dashboard rollup.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Presence</th>
+              <th>Agent state</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>present</code></td>
+              <td><code>working</code></td>
+              <td>A matching live agent is active.</td>
+            </tr>
+            <tr>
+              <td><code>present</code></td>
+              <td><code>ready</code></td>
+              <td>A matching live agent can accept input.</td>
+            </tr>
+            <tr>
+              <td><code>present</code></td>
+              <td><code>blocked</code></td>
+              <td>A matching live agent needs attention.</td>
+            </tr>
+            <tr>
+              <td><code>absent</code></td>
+              <td><code>unknown</code></td>
+              <td>No matching live runtime was observed.</td>
+            </tr>
+            <tr>
+              <td><code>stale</code></td>
+              <td><code>unknown</code></td>
+              <td>Runtime evidence exists but is outside its freshness window.</td>
+            </tr>
+            <tr>
+              <td><code>unknown</code></td>
+              <td><code>unknown</code></td>
+              <td>Coverage or match evidence is insufficient.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          <p>
+            <strong>Ready is not idle.</strong> Ready requires a live agent.
+            Idle is a normalized inventory/dashboard concept for work not
+            currently active.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="query-heading">
+        <h2 id="query-heading">Practice: issue one side-effect-free query</h2>
+        <p>
+          <span class="badge badge--safe">Side-effect-free</span>
+          This command does not scan, write the inventory, attach, focus, or
+          send input.
+        </p>
+        <pre><code>printf '%s\n' '{
+  "schema_version": 1,
+  "queries": [{
+    "query_id": "demo-api",
+    "path": "/workspaces/demo-api",
+    "repo_root": "/repos/demo",
+    "git_branch": "feature/demo"
+  }]
+}' | tss status --json</code></pre>
+        <p>Read the response from the outside in:</p>
+        <ol class="steps">
+          <li>Confirm <code>schema_version</code> and freshness timestamps.</li>
+          <li>Check provider availability and provider-level errors.</li>
+          <li>Find your opaque <code>query_id</code>.</li>
+          <li>Interpret presence and state separately.</li>
+          <li>Inspect match evidence, raw runtimes, and per-query errors.</li>
+        </ol>
+      </section>
+
+      <section aria-labelledby="response-heading">
+        <h2 id="response-heading">Read synthetic evidence</h2>
+        <pre><code>{
+  "schema_version": 1,
+  "observed_at": "2026-08-12T20:00:00Z",
+  "fresh_until": "2026-08-12T20:00:10Z",
+  "providers": [{
+    "name": "herdr",
+    "available": true,
+    "observed_at": "2026-08-12T20:00:00Z",
+    "fresh_until": "2026-08-12T20:00:10Z"
+  }, {
+    "name": "tmux",
+    "available": false,
+    "observed_at": "2026-08-12T20:00:00Z",
+    "fresh_until": "2026-08-12T20:00:10Z",
+    "error": "tmux is unavailable"
+  }],
+  "results": [{
+    "query_id": "demo-api",
+    "runtime_presence": "present",
+    "agent_state": "ready",
+    "match": {
+      "type": "repo_branch",
+      "matched_path": "/workspaces/demo-api"
+    },
+    "runtimes": [{
+      "observation_id": "herdr:demo",
+      "backend": "herdr",
+      "native_id": "demo",
+      "path": "/workspaces/demo-api",
+      "repo_root": "/repos/demo",
+      "git_branch": "feature/demo",
+      "runtime_presence": "present",
+      "agent_state": "ready",
+      "observed_at": "2026-08-12T20:00:00Z",
+      "expires_at": "2026-08-12T20:00:10Z"
+    }],
+    "errors": []
+  }]
+}</code></pre>
+        <p>
+          The result proves that a matching live Herdr runtime was observed and
+          could accept input during its freshness window. It does not prove that
+          the branch is healthy, tests pass, or no local lock exists.
+        </p>
+      </section>
+
+      <section aria-labelledby="retrieve-heading">
+        <h2 id="retrieve-heading">Interpret the state</h2>
+        <form
+          class="quiz"
+          data-quiz
+          data-answer="c"
+          data-correct-message="Correct. Ready describes a live agent that can accept input."
+          data-incorrect-message="Try again. Keep live-agent semantics separate from inventory or dashboard idleness."
+          action="#"
+        >
+          <fieldset>
+            <legend>A result says runtime_presence=present and agent_state=ready. What is justified?</legend>
+            <label><input type="radio" name="answer" value="a"> No live agent exists for this query.</label>
+            <label><input type="radio" name="answer" value="b"> The workspace has no remaining work.</label>
+            <label><input type="radio" name="answer" value="c"> A live agent can accept new input.</label>
+          </fieldset>
+          <button type="submit">Check decision</button>
+          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
+        </form>
+        <noscript>
+          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
+        </noscript>
+        <details>
+          <summary>Reveal answer and reasoning</summary>
+          <p>
+            Answer C. Presence proves a matching runtime was observed; ready
+            means its agent can accept input. Neither claim establishes overall
+            workspace health or completion.
+          </p>
+        </details>
+      </section>
+
+      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
+        <h2 id="checkpoint-heading">Mission checkpoint</h2>
+        <p>
+          You have completed the path when you can build an inventory, choose
+          one session, preview a safe return command, and explain live presence
+          separately from agent state without consulting the answer.
+        </p>
+      </section>
+
+      <nav class="lesson-links" aria-label="Lesson navigation">
+        <a href="0003-return-safely.html">Previous: return safely</a>
+        <a href="../reference/first-day-runbook.html">Keep the runbook</a>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Primary source:
+        <a href="../../runtime-status-contract.md">Runtime status provider contract</a>.
+        Ask the agent to explain any unknown match or provider error.
+      </p>
+    </footer>
+  </body>
+</html>

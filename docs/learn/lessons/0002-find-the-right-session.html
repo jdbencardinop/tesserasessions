@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Lesson 2: Find the right tss session</title>
+    <link rel="stylesheet" href="../assets/course.css">
+    <script src="../assets/lesson.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to lesson</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <p class="eyebrow">Lesson 2 of 4</p>
+        <h1>Find the right session</h1>
+        <p class="lede">
+          Narrow by metadata first, then inspect one exact record before
+          deciding how to return.
+        </p>
+      </div>
+    </header>
+    <nav class="course-nav" aria-label="Course">
+      <a href="../README.md">Course index</a>
+      <a href="../MISSION.md">Mission</a>
+      <a href="../GLOSSARY.md">Glossary</a>
+      <a href="../reference/first-day-runbook.html">Runbook</a>
+      <a aria-current="page" href="0002-find-the-right-session.html">Lesson 2</a>
+    </nav>
+
+    <main id="content">
+      <div class="outcome">
+        <p><span class="label">Outcome</span>Narrow metadata and inspect one exact session.</p>
+        <p><span class="label">Time</span>About 8 minutes.</p>
+      </div>
+
+      <div class="callout">
+        <p>
+          IDs and paths in this lesson are synthetic. Replace
+          <code>codex-demo123</code> with an ID returned by your own
+          <code>tss list</code>.
+        </p>
+      </div>
+
+      <section aria-labelledby="narrow-heading">
+        <h2 id="narrow-heading">Start broad, then add evidence</h2>
+        <p>
+          Session IDs are source-qualified. Project path, source, title, tags,
+          status, and recency help select the intended record without opening
+          transcript content.
+        </p>
+        <pre><code>tss list --limit 20
+tss list --source codex --query demo-api --sort last
+tss list --status needs_attention --tag review
+tss search demo-api --source claude</code></pre>
+        <p>
+          <span class="badge badge--safe">Metadata only</span>
+          These searches use normalized metadata and summaries.
+        </p>
+      </section>
+
+      <section aria-labelledby="inspect-heading">
+        <h2 id="inspect-heading">Inspect before action</h2>
+        <pre><code>tss show codex-demo123</code></pre>
+        <p>Check the fields that answer different questions:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Question answered</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Source and native ID</td>
+              <td>Which tool owns the resume identity?</td>
+            </tr>
+            <tr>
+              <td>Project path</td>
+              <td>Which checkout or worktree does it belong to?</td>
+            </tr>
+            <tr>
+              <td>Last activity</td>
+              <td>Which candidate is most recent?</td>
+            </tr>
+            <tr>
+              <td>Status, title, tags, pin</td>
+              <td>What local operator context has been recorded?</td>
+            </tr>
+            <tr>
+              <td>Resume/attach commands</td>
+              <td>What return paths are available?</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="callout callout--warning" aria-labelledby="content-heading">
+        <h2 id="content-heading">Content search is a separate choice</h2>
+        <p>
+          <span class="badge badge--content">Explicit content access</span>
+          <code>tss search demo-api --content</code> lazily reads supported
+          transcript/content snippets. Do not add <code>--content</code> merely
+          to improve a metadata query.
+        </p>
+      </section>
+
+      <section aria-labelledby="retrieve-heading">
+        <h2 id="retrieve-heading">Choose the least-invasive query</h2>
+        <form
+          class="quiz"
+          data-quiz
+          data-answer="a"
+          data-correct-message="Correct. Source and query filters search metadata without opting into transcript content."
+          data-incorrect-message="Try again. The goal is to avoid transcript access until metadata proves insufficient."
+          action="#"
+        >
+          <fieldset>
+            <legend>You know the source is Codex and the project contains "demo-api." Which command should you try first?</legend>
+            <label><input type="radio" name="answer" value="a"> tss search demo-api --source codex</label>
+            <label><input type="radio" name="answer" value="b"> tss search demo-api --content</label>
+            <label><input type="radio" name="answer" value="c"> tss show --json demo-api</label>
+          </fieldset>
+          <button type="submit">Check decision</button>
+          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
+        </form>
+        <noscript>
+          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
+        </noscript>
+        <details>
+          <summary>Reveal answer and reasoning</summary>
+          <p>
+            Answer A. It combines known metadata evidence. Content access is
+            unnecessary, and <code>show</code> requires one session reference.
+          </p>
+        </details>
+      </section>
+
+      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
+        <h2 id="checkpoint-heading">Checkpoint</h2>
+        <p>
+          You are ready for lesson 3 when you can find one source-qualified
+          record and explain why its project path is evidence, not identity.
+        </p>
+      </section>
+
+      <nav class="lesson-links" aria-label="Lesson navigation">
+        <a href="0001-build-an-inventory.html">Previous: build an inventory</a>
+        <a href="0003-return-safely.html">Next: return safely</a>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Primary source: <a href="../../cheatsheet.md">tss cheatsheet</a>.
+        Ask the agent to explain any field whose provenance is unclear.
+      </p>
+    </footer>
+  </body>
+</html>

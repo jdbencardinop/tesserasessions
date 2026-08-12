@@ -1,5 +1,9 @@
 # tss cheatsheet
 
+First time using `tss`? Start with the
+[operator learning path](learn/README.md) and keep the printable
+[first-day runbook](learn/reference/first-day-runbook.html) nearby.
+
 ## Daily loop
 
 ```sh

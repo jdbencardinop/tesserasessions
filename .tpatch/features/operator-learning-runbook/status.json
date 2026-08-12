@@ -2,12 +2,17 @@
   "id": "operator-learning-runbook",
   "slug": "operator-learning-runbook",
   "title": "Create a mission-driven operator learning workspace for tss, adapting the teach skill at https://github.com/mattpocock/skills/tree/main/skills/productivity/teach. Teach users to discover, inspect, curate, resume, monitor, and troubleshoot agent sessions through a concise runbook, trusted annotated resources, canonical glossary, printable quick references, short practice lessons with reusable assets, and evidence-based learning records. Ground every exercise in actual tss commands and privacy-safe synthetic data; distinguish quick reference from durable learning, and keep hosted docs, telemetry, and agent-tool tutorials out of scope.",
-  "state": "requested",
+  "state": "applied",
   "compatibility": "unknown",
   "requested_at": "2026-08-12T21:15:01Z",
-  "updated_at": "2026-08-12T21:15:01Z",
-  "last_command": "add",
-  "apply": {},
+  "updated_at": "2026-08-12T22:13:10Z",
+  "last_command": "verify",
+  "notes": "landed at 2026-08-12T22:13:39Z",
+  "apply": {
+    "completed_at": "2026-08-12T22:13:00Z",
+    "base_commit": "982029a2d0b07bc84fb5d040f6be2c2430a263fb",
+    "has_patch": true
+  },
   "reconcile": {},
   "depends_on": [
     {
@@ -18,5 +23,14 @@
       "slug": "codex-session-adapter",
       "kind": "soft"
     }
-  ]
+  ],
+  "verify": {
+    "verified_at": "2026-08-12T22:13:09Z",
+    "passed": false,
+    "recipe_hash_at_verify": "25137f33192486b67215c1650f70fd26289ca4c0c670f5e752d3b67cfc75504c",
+    "patch_hash_at_verify": "f3c8875a4c5c95921b2816d4e942042c43a0415f34436e85068e5cd01f3e7b76",
+    "parent_snapshot": {
+      "docs-guide-cheatsheet": "applied"
+    }
+  }
 }

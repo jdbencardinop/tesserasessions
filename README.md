@@ -85,6 +85,10 @@ tss list --source claude --limit 20
 tss show claude-abc123
 ```
 
+New to the state model or safe resume flow? Follow the
+[operator learning path](docs/learn/README.md) or print the
+[first-day runbook](docs/learn/reference/first-day-runbook.html).
+
 ## Commands
 
 | Command | Purpose |

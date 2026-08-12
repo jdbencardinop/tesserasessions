@@ -24,4 +24,6 @@ All notable changes to `tesserasessions` will be documented in this file.
 - Add a read-only OpenAI Codex CLI adapter for active JSONL rollout metadata,
   exact thread resume, interactive-source filtering, indexed names, and
   authoritative reconciliation.
+- Add a mission-driven operator learning path with trusted resources, canonical
+  terminology, a printable first-day runbook, and short interactive lessons.
 - Add tpatch-tracked roadmap metadata and project documentation.

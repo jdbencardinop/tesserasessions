@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "feature": "operator-learning-runbook",
+  "current_generation": 1,
+  "generations": [
+    {
+      "generation": 1,
+      "generation_id": "pg_0911bb8862cc",
+      "kind": "record",
+      "patch_sha256": "f3c8875a4c5c95921b2816d4e942042c43a0415f34436e85068e5cd01f3e7b76",
+      "git_patch_id": "3041388c5307ee0f9a5f0d4546f29feb0af39776",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "25137f33192486b67215c1650f70fd26289ca4c0c670f5e752d3b67cfc75504c",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "",
+      "base_commit": "982029a2d0b07bc84fb5d040f6be2c2430a263fb",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [
+          ".gitignore",
+          "CHANGELOG.md",
+          "README.md",
+          "docs/cheatsheet.md",
+          "docs/learn/",
+          "docs/roadmap.md"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        ".gitignore",
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/learn/GLOSSARY.md",
+        "docs/learn/MISSION.md",
+        "docs/learn/README.md",
+        "docs/learn/RESOURCES.md",
+        "docs/learn/assets/course.css",
+        "docs/learn/assets/lesson.js",
+        "docs/learn/lessons/0001-build-an-inventory.html",
+        "docs/learn/lessons/0002-find-the-right-session.html",
+        "docs/learn/lessons/0003-return-safely.html",
+        "docs/learn/lessons/0004-diagnose-live-state.html",
+        "docs/learn/reference/first-day-runbook.html",
+        "docs/learn/templates/learning-record.md",
+        "docs/learn/templates/notes.md",
+        "docs/roadmap.md"
+      ],
+      "dependencies": [
+        {
+          "slug": "codex-session-adapter",
+          "kind": "soft",
+          "satisfied_by": "",
+          "parent_generation": 1,
+          "parent_patch_sha256": "f893c05af2cd913209f51a4a3b0e0af038e3263036923e55e33baa2f7a19ba39",
+          "parent_recipe_sha256": "55f19743c6c91e8c4b73a26384f6bcefae539bf5ae1731f0ea911b8216370e99"
+        },
+        {
+          "slug": "docs-guide-cheatsheet",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 0,
+          "parent_patch_sha256": ""
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>tss first-day runbook</title>
+    <link rel="stylesheet" href="../assets/course.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to runbook</a>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <p class="eyebrow">Printable reference</p>
+        <h1>First-day runbook</h1>
+        <p class="lede">
+          Build a trustworthy inventory, find the right work, and preview the
+          safest way back before anything interactive runs.
+        </p>
+      </div>
+    </header>
+    <nav class="course-nav" aria-label="Learning workspace">
+      <a href="../README.md">Course index</a>
+      <a href="../MISSION.md">Mission</a>
+      <a href="../GLOSSARY.md">Glossary</a>
+      <a href="../RESOURCES.md">Resources</a>
+      <a aria-current="page" href="first-day-runbook.html">Runbook</a>
+    </nav>
+
+    <main id="content">
+      <p class="print-only">
+        Local reference: docs/learn/reference/first-day-runbook.html
+      </p>
+
+      <section aria-labelledby="evidence-heading">
+        <h2 id="evidence-heading">1. Know which layer you are looking at</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Evidence</th>
+              <th>How it changes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Source store</td>
+              <td>Agent-owned historical metadata and native resume identity.</td>
+              <td>The source tool owns it; <code>tss</code> reads it.</td>
+            </tr>
+            <tr>
+              <td>Inventory</td>
+              <td>Local normalized sessions in the <code>tss</code> database.</td>
+              <td>An explicit <code>tss scan</code> refreshes it.</td>
+            </tr>
+            <tr>
+              <td>Runtime</td>
+              <td>Live Herdr/tmux observations with freshness.</td>
+              <td><code>tss status --json</code> probes in memory.</td>
+            </tr>
+            <tr>
+              <td>Control</td>
+              <td>Attach, resume, open, send, read, or run commands.</td>
+              <td>Preview with <code>--print</code>; execute deliberately.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="daily-heading">
+        <h2 id="daily-heading">2. Run the safe daily sequence</h2>
+        <ol class="steps">
+          <li>
+            <strong>Check discovery and configuration.</strong>
+            <span class="badge badge--safe">Read/health check</span>
+            <pre><code>tss doctor</code></pre>
+            Confirm the expected source paths exist. A missing optional backend
+            is not the same as a broken historical source.
+          </li>
+          <li>
+            <strong>Refresh the local inventory.</strong>
+            <span class="badge badge--write">Local inventory write</span>
+            <pre><code>tss scan --json</code></pre>
+            Source stores remain read-only. Inspect every report for
+            <code>skipped</code>, <code>message</code>, or <code>error</code>.
+          </li>
+          <li>
+            <strong>Narrow by metadata.</strong>
+            <span class="badge badge--safe">Metadata only</span>
+            <pre><code>tss list --limit 20
+tss list --source codex --query demo-api --sort last
+tss search demo-api --source claude</code></pre>
+            Do not add <code>--content</code> unless transcript/content access is
+            intentional.
+          </li>
+          <li>
+            <strong>Inspect one exact session.</strong>
+            <span class="badge badge--safe">Metadata only</span>
+            <pre><code>tss show &lt;session-id&gt;</code></pre>
+            Verify source, native ID, project path, timestamps, status, and the
+            available resume/attach commands.
+          </li>
+          <li>
+            <strong>Preview the return path.</strong>
+            <span class="badge badge--interactive">Interactive when executed</span>
+            <pre><code>tss attach &lt;session-id&gt; --print</code></pre>
+            Read the generated command. Remove <code>--print</code> only when the
+            target and action are correct.
+          </li>
+        </ol>
+      </section>
+
+      <section aria-labelledby="scan-heading">
+        <h2 id="scan-heading">3. Interpret scan reports</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Report</th>
+              <th>Meaning</th>
+              <th>Operator action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sessions/runtimes counted, no message</td>
+              <td>The source scan completed.</td>
+              <td>Continue to list and inspect.</td>
+            </tr>
+            <tr>
+              <td><code>skipped: true</code></td>
+              <td>The optional store/provider was unavailable.</td>
+              <td>Check <code>doctor</code>; ignore it if intentionally absent.</td>
+            </tr>
+            <tr>
+              <td>Incomplete warning</td>
+              <td>Valid rows refreshed, but not every authoritative item was readable.</td>
+              <td>Prior rows were preserved; retry after the source settles.</td>
+            </tr>
+            <tr>
+              <td><code>error</code></td>
+              <td>The source could not provide a usable scan.</td>
+              <td>Fix the source/path/schema issue; do not edit databases manually.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="return-heading">
+        <h2 id="return-heading">4. Choose attach, resume, or open</h2>
+        <div class="decision">
+          <h3>A matching live runtime exists</h3>
+          <p>
+            Use <code>tss attach &lt;id&gt; --print</code>. It prefers the live
+            backend and shows the exact attach command.
+          </p>
+        </div>
+        <div class="decision">
+          <h3>No matching runtime, but the historical session is resumable</h3>
+          <p>
+            Use the same attach preview. <code>tss</code> falls back to the
+            source-qualified native resume command.
+          </p>
+        </div>
+        <div class="decision">
+          <h3>You want a new environment, not the old conversation</h3>
+          <p>
+            Use <code>tss open &lt;id&gt; --print</code>. This opens Herdr/tmux
+            in the project directory; it does not resume conversation history.
+          </p>
+        </div>
+      </section>
+
+      <section aria-labelledby="status-heading">
+        <h2 id="status-heading">5. Diagnose live state without scanning</h2>
+        <p>
+          <span class="badge badge--safe">Side-effect-free</span>
+          <code>status --json</code> does not open the inventory, scan sources,
+          attach, focus, or send input.
+        </p>
+        <pre><code>printf '%s\n' '{
+  "schema_version": 1,
+  "queries": [{
+    "query_id": "demo-api",
+    "path": "/workspaces/demo-api",
+    "repo_root": "/repos/demo",
+    "git_branch": "feature/demo"
+  }]
+}' | tss status --json</code></pre>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Runtime presence</th>
+              <th>Agent state</th>
+              <th>Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>present</code></td>
+              <td><code>working</code></td>
+              <td>A matching live agent is doing work.</td>
+            </tr>
+            <tr>
+              <td><code>present</code></td>
+              <td><code>ready</code></td>
+              <td>A matching live agent can accept input.</td>
+            </tr>
+            <tr>
+              <td><code>present</code></td>
+              <td><code>blocked</code></td>
+              <td>Live evidence exists and needs attention.</td>
+            </tr>
+            <tr>
+              <td><code>absent</code></td>
+              <td><code>unknown</code></td>
+              <td>No matching live runtime was observed.</td>
+            </tr>
+            <tr>
+              <td><code>stale</code></td>
+              <td><code>unknown</code></td>
+              <td>Evidence exists but is outside its freshness window.</td>
+            </tr>
+            <tr>
+              <td><code>unknown</code></td>
+              <td><code>unknown</code></td>
+              <td>Provider coverage or match evidence is insufficient.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section aria-labelledby="curate-heading">
+        <h2 id="curate-heading">6. Leave the next handoff cleaner</h2>
+        <pre><code>tss summarize &lt;session-id&gt;
+tss title &lt;session-id&gt; "Finish demo API migration"
+tss tag &lt;session-id&gt; demo,review
+tss pin &lt;session-id&gt;
+tss mark &lt;session-id&gt; needs_attention</code></pre>
+        <p>
+          Manual titles, tags, and pins survive scans for sessions that still
+          exist. A manual <code>mark</code> is transient: a later scan can
+          replace status with the source-derived value.
+        </p>
+      </section>
+
+      <section aria-labelledby="troubleshoot-heading">
+        <h2 id="troubleshoot-heading">7. Troubleshooting decisions</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Symptom</th>
+              <th>Check</th>
+              <th>Do not</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Expected source is skipped</td>
+              <td><code>tss doctor</code>, environment override, configured path.</td>
+              <td>Create fake source files.</td>
+            </tr>
+            <tr>
+              <td>Scan is incomplete</td>
+              <td>Retry after active writes settle; inspect the warning path.</td>
+              <td>Delete prior inventory rows.</td>
+            </tr>
+            <tr>
+              <td>Session reference is not found</td>
+              <td>Rescan, then use <code>list</code> or <code>search</code>.</td>
+              <td>Guess a native ID.</td>
+            </tr>
+            <tr>
+              <td>Attach target looks wrong</td>
+              <td><code>show</code>, then compare <code>attach --print</code>.</td>
+              <td>Execute before reviewing.</td>
+            </tr>
+            <tr>
+              <td>Live status is unknown</td>
+              <td>Provider availability, errors, path, repository, branch.</td>
+              <td>Treat unknown as absent.</td>
+            </tr>
+            <tr>
+              <td>Need transcript text</td>
+              <td>Use <code>search --content</code> only with explicit intent.</td>
+              <td>Assume metadata search reads content.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="callout callout--warning" aria-labelledby="privacy-heading">
+        <h2 id="privacy-heading">Privacy checkpoint</h2>
+        <ul>
+          <li>Never commit the inventory database or source stores.</li>
+          <li>Redact IDs, paths, repositories, and output before filing issues.</li>
+          <li>Prefer metadata-only commands; content search is opt-in.</li>
+          <li>Review generated control commands before execution.</li>
+          <li>Do not edit source stores or SQLite to repair scan behavior.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-links" aria-label="Lessons">
+        <a href="../lessons/0001-build-an-inventory.html">Start lesson 1</a>
+        <a href="../lessons/0004-diagnose-live-state.html">Review live diagnosis</a>
+      </nav>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Contract details:
+        <a href="../../runtime-status-contract.md">runtime status</a> and
+        <a href="../../source-adapters.md">historical sources</a>.
+      </p>
+    </footer>
+  </body>
+</html>

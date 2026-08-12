@@ -1,0 +1,6 @@
+ .gitignore         | 2 ++
+ CHANGELOG.md       | 2 ++
+ README.md          | 4 ++++
+ docs/cheatsheet.md | 4 ++++
+ docs/roadmap.md    | 8 ++++----
+ 5 files changed, 16 insertions(+), 4 deletions(-)

@@ -1,0 +1,8 @@
+{
+  "slug": "operator-learning-runbook",
+  "completed_at": "2026-08-12T22:13:00Z",
+  "base_commit": "982029a2d0b07bc84fb5d040f6be2c2430a263fb",
+  "has_patch": true,
+  "validation_status": "passed",
+  "validation_notes": "tpatch test — command: go test ./..."
+}

@@ -1,0 +1,2011 @@
+diff --git a/.gitignore b/.gitignore
+index ac169ed..4c9e58a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -26,6 +26,8 @@ go.work.sum
+ 
+ # Local scratch and retrospective notes
+ .gitignored/
++docs/learn/NOTES.md
++docs/learn/learning-records/
+ 
+ # Local build artifacts (Makefile writes here; see `make build`).
+ /bin/
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 4ea92db..d7f5cf9 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -24,4 +24,6 @@ All notable changes to `tesserasessions` will be documented in this file.
+ - Add a read-only OpenAI Codex CLI adapter for active JSONL rollout metadata,
+   exact thread resume, interactive-source filtering, indexed names, and
+   authoritative reconciliation.
++- Add a mission-driven operator learning path with trusted resources, canonical
++  terminology, a printable first-day runbook, and short interactive lessons.
+ - Add tpatch-tracked roadmap metadata and project documentation.
+diff --git a/README.md b/README.md
+index f3cb61c..b136bdc 100644
+--- a/README.md
++++ b/README.md
+@@ -85,6 +85,10 @@ tss list --source claude --limit 20
+ tss show claude-abc123
+ ```
+ 
++New to the state model or safe resume flow? Follow the
++[operator learning path](docs/learn/README.md) or print the
++[first-day runbook](docs/learn/reference/first-day-runbook.html).
++
+ ## Commands
+ 
+ | Command | Purpose |
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index ffacc7f..fc5aab9 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -1,5 +1,9 @@
+ # tss cheatsheet
+ 
++First time using `tss`? Start with the
++[operator learning path](learn/README.md) and keep the printable
++[first-day runbook](learn/reference/first-day-runbook.html) nearby.
++
+ ## Daily loop
+ 
+ ```sh
+diff --git a/docs/learn/GLOSSARY.md b/docs/learn/GLOSSARY.md
+new file mode 100644
+index 0000000..4d9f68f
+--- /dev/null
++++ b/docs/learn/GLOSSARY.md
+@@ -0,0 +1,96 @@
++# tss operator glossary
++
++Canonical language for the inventory and runtime model. Lessons and runbooks
++use these terms consistently.
++
++## Inventory
++
++**Source**:
++
++A system that supplies session or runtime observations to `tss`, such as
++Claude, Codex, Herdr, or tmux.
++
++**Historical session**:
++
++An independently resumable record discovered in an agent's persistent store.
++It can exist without a live process.
++
++**Inventory**:
++
++The local SQLite projection maintained by explicit `tss scan` operations. It is
++not the source tool's database and is not a live-process registry.
++
++**Native ID**:
++
++The source tool's stable resume identity. `tss` derives its own source-qualified
++ID from the source and native ID.
++
++**Authoritative snapshot**:
++
++A successful complete source scan whose result can safely replace that source's
++prior inventory rows.
++
++**Incomplete snapshot**:
++
++A scan that found valid rows but could not read every authoritative item.
++Valid rows may refresh, but prior rows are not pruned.
++
++## Live state
++
++**Runtime instance**:
++
++A currently observable agent process, pane, or surface reported by a live
++provider. A runtime may match a historical session, but the concepts are not
++interchangeable.
++
++**Provider**:
++
++A bounded live observer, currently Herdr or tmux, that reports availability and
++runtime evidence.
++
++**Runtime presence**:
++
++Whether a matching runtime is `present`, `absent`, `stale`, or `unknown`.
++Presence says nothing by itself about what the agent is doing.
++
++**Agent state**:
++
++The semantic state of a live agent: `working`, `ready`, `blocked`, `done`, or
++`unknown`.
++
++**Ready**:
++
++A live agent can accept input. It is not the same as an inventory or dashboard
++item with no session.
++
++**Idle**:
++
++A normalized inventory status for work not currently active. The runtime
++contract deliberately uses `ready`, not `idle`, for a live waiting agent.
++
++**Stale**:
++
++Evidence exists but is older than its freshness contract or has been manually
++classified as stale.
++
++**Needs attention**:
++
++A normalized inventory status indicating a blocker, failure, stale condition,
++or operator follow-up. It is a rollup label, not a live-provider agent state.
++
++## Returning to work
++
++**Resume**:
++
++Start the source tool using a historical session's exact native identity and
++source-store context.
++
++**Attach**:
++
++Return to an existing matching live runtime when possible, otherwise use the
++session's native resume command.
++
++**Open**:
++
++Create a new Herdr workspace or tmux session in the same project directory. It
++does not resume the historical agent conversation.
+diff --git a/docs/learn/MISSION.md b/docs/learn/MISSION.md
+new file mode 100644
+index 0000000..d0cd46a
+--- /dev/null
++++ b/docs/learn/MISSION.md
+@@ -0,0 +1,33 @@
++# Mission: Operate tss with confidence
++
++## Why
++
++Use `tss` to recover the right coding-agent work quickly, judge what evidence
++is current, and return to it safely without exposing transcript content or
++confusing historical inventory with live runtime state.
++
++## Success looks like
++
++- Build an inventory and explain whether each source was found, skipped,
++  incomplete, or failed.
++- Find the intended session from metadata and inspect it before taking action.
++- Preview and choose between attaching, resuming, or opening a new workspace.
++- Explain `runtime_presence` separately from `agent_state` and identify when
++  local evidence needs attention.
++- Leave useful titles, tags, pins, and summaries for the next handoff, and
++  understand when a later scan can recompute status.
++
++## Constraints
++
++- Prefer metadata and local/extractive behavior over transcript access.
++- Preview interactive commands with `--print`.
++- Use official contracts and current command help as the source of truth.
++- Practice with synthetic IDs and paths; never commit local inventory data.
++- Keep each lesson focused enough to finish in about ten minutes.
++
++## Out of scope
++
++- Learning how to operate each underlying coding agent.
++- Editing agent source stores or the `tss` SQLite database.
++- Hosted progress tracking, telemetry, or synchronized learner profiles.
++- Treating a completed lesson as proof of understanding without evidence.
+diff --git a/docs/learn/README.md b/docs/learn/README.md
+new file mode 100644
+index 0000000..00367a9
+--- /dev/null
++++ b/docs/learn/README.md
+@@ -0,0 +1,56 @@
++# Learn to operate tss
++
++This path teaches one practical outcome: find the right agent work, understand
++the evidence available, and return to it safely.
++
++**Prerequisites:** build or install `tss`, and have at least one supported
++source configured. Start with `tss doctor`; you do not need to expose or commit
++any transcript content.
++
++## Learning path
++
++| Lesson | Tangible win | Time |
++| --- | --- | --- |
++| [1. Build an inventory](lessons/0001-build-an-inventory.html) | Judge source and scan health without guessing. | 8 min |
++| [2. Find the right session](lessons/0002-find-the-right-session.html) | Narrow metadata and inspect one exact session. | 8 min |
++| [3. Return safely](lessons/0003-return-safely.html) | Choose attach, resume, or open and preview the command. | 10 min |
++| [4. Diagnose live state](lessons/0004-diagnose-live-state.html) | Separate runtime presence from agent state. | 10 min |
++
++Keep the printable
++[first-day runbook](reference/first-day-runbook.html) nearby after the lessons.
++Use the [glossary](GLOSSARY.md) when a state term is ambiguous and the
++[resource map](RESOURCES.md) when a claim needs a primary source.
++
++The lessons are standalone local HTML files. Open them directly in a browser;
++no server, CDN, analytics, network request, or account is required.
++
++## References are not lessons
++
++Lessons build a decision skill through short practice. References compress the
++answer for later use. Reading the runbook is useful, but retrieval and correct
++application are stronger evidence that the concept will remain available under
++pressure.
++
++## Keep your learning state local
++
++The repository commits reusable material, not claims about an individual.
++Personal notes and learning records are ignored by Git.
++
++```sh
++cp docs/learn/templates/notes.md docs/learn/NOTES.md
++mkdir -p docs/learn/learning-records
++cp docs/learn/templates/learning-record.md \
++  docs/learn/learning-records/0001-first-inventory.md
++```
++
++Write a learning record only after you can demonstrate a non-obvious decision,
++correct a misconception, or establish meaningful prior knowledge. It is not a
++session log.
++
++## Method attribution
++
++The learning architecture adapts Matt Pocock's MIT-licensed
++[`teach` skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/teach):
++mission grounding, trusted knowledge, short skill practice, reusable
++references, and evidence-based learning records. All `tss` lesson content and
++assets in this directory are original to this project.
+diff --git a/docs/learn/RESOURCES.md b/docs/learn/RESOURCES.md
+new file mode 100644
+index 0000000..b8865b3
+--- /dev/null
++++ b/docs/learn/RESOURCES.md
+@@ -0,0 +1,58 @@
++# tss operator resources
++
++These are the trusted sources behind the learning path. Each entry states what
++it establishes and when to use it.
++
++## Knowledge
++
++- [tss README](../../README.md)
++  Product scope, installation, command overview, storage, and safety defaults.
++  Use it for the supported public surface.
++- [tss cheatsheet](../cheatsheet.md)
++  Compact command syntax for daily work. Use it after completing the lessons.
++- [Historical source adapters](../source-adapters.md)
++  Store discovery, filtering, resume context, reconciliation, and privacy
++  boundaries. Use it when a source is missing or its inventory looks wrong.
++- [Runtime status provider contract](../runtime-status-contract.md)
++  Normative ownership, freshness, matching, `runtime_presence`, and
++  `agent_state` semantics. Use it when diagnosing live state or integrating a
++  consumer such as `tws`.
++- [`teach` skill by Matt Pocock](https://github.com/mattpocock/skills/tree/main/skills/productivity/teach)
++  Method adapted for mission-driven lessons, retrieval practice, references,
++  and evidence-based learning records. Use it when extending this curriculum.
++  The source is available under its
++  [MIT license](https://github.com/mattpocock/skills/blob/main/LICENSE).
++- [GitHub Copilot CLI documentation](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/overview)
++  Official Copilot CLI behavior and safety model. Use it for source-tool
++  questions beyond the `tss` adapter boundary.
++- [Claude Code documentation](https://code.claude.com/docs/en/overview)
++  Official Claude Code surfaces and setup. Use it for Claude behavior rather
++  than inferring from stored metadata.
++- [OpenAI Codex CLI documentation](https://developers.openai.com/codex/cli/)
++  Official Codex CLI usage and resume behavior. Use it for Codex behavior
++  outside active-session inventory.
++- [OpenCode documentation](https://opencode.ai/docs)
++  Official OpenCode installation and usage. Use it for application behavior,
++  not as a substitute for the adapter contract.
++- [tmux wiki](https://github.com/tmux/tmux/wiki)
++  Primary project guidance for tmux sessions and panes. Use it when a generated
++  tmux command behaves differently from expected.
++
++## Wisdom
++
++- [tesserasessions issues](https://github.com/jdbencardinop/tesserasessions/issues)
++  Report reproducible inventory, matching, resume, documentation, or privacy
++  defects with redacted output.
++- Official issue trackers linked from each source tool's documentation
++  Use them when the behavior reproduces in the source tool without `tss`.
++
++Community advice can help diagnose environment-specific behavior, but it does
++not override the contracts above.
++
++## Gaps
++
++- Hermes Agent does not yet have a pinned, operator-facing persistence contract
++  in this curriculum. Use the `tss` source adapter guide for supported behavior.
++- Herdr's live JSON/status contract should be linked here once a stable official
++  reference is available.
++- t3code is not yet a supported historical source.
+diff --git a/docs/learn/assets/course.css b/docs/learn/assets/course.css
+new file mode 100644
+index 0000000..9905dcf
+--- /dev/null
++++ b/docs/learn/assets/course.css
+@@ -0,0 +1,505 @@
++:root {
++  color-scheme: light dark;
++  --bg: #f6f3ec;
++  --surface: #fffdf8;
++  --surface-strong: #ece6da;
++  --text: #1f2925;
++  --muted: #59645f;
++  --line: #c9c1b3;
++  --accent: #155e75;
++  --accent-strong: #0e4a5d;
++  --accent-soft: #d9edf2;
++  --success: #17633a;
++  --success-soft: #dff3e7;
++  --warning: #805500;
++  --warning-soft: #fff0c7;
++  --danger: #8c2f39;
++  --danger-soft: #f8dfe2;
++  --code-bg: #17211d;
++  --code-text: #f4f1e8;
++  --shadow: 0 0.8rem 2.2rem rgb(31 41 37 / 10%);
++  --radius: 0.75rem;
++  --measure: 72rem;
++  font-family:
++    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
++    sans-serif;
++}
++
++@media (prefers-color-scheme: dark) {
++  :root {
++    --bg: #121816;
++    --surface: #1a2420;
++    --surface-strong: #27332e;
++    --text: #f1eee5;
++    --muted: #b7c0ba;
++    --line: #46534d;
++    --accent: #76c5d8;
++    --accent-strong: #a2dcea;
++    --accent-soft: #173b45;
++    --success: #7bd39e;
++    --success-soft: #183c27;
++    --warning: #f1c56a;
++    --warning-soft: #493817;
++    --danger: #f1a0a9;
++    --danger-soft: #4a2025;
++    --code-bg: #090e0c;
++    --code-text: #f5f2e9;
++    --shadow: 0 0.8rem 2.2rem rgb(0 0 0 / 28%);
++  }
++}
++
++* {
++  box-sizing: border-box;
++}
++
++html {
++  scroll-behavior: smooth;
++}
++
++body {
++  margin: 0;
++  background: var(--bg);
++  color: var(--text);
++  font-size: 1.05rem;
++  line-height: 1.65;
++}
++
++a {
++  color: var(--accent);
++  text-decoration-thickness: 0.09em;
++  text-underline-offset: 0.16em;
++}
++
++a:hover {
++  color: var(--accent-strong);
++}
++
++a:focus-visible,
++button:focus-visible,
++input:focus-visible,
++summary:focus-visible {
++  outline: 0.2rem solid var(--accent);
++  outline-offset: 0.2rem;
++}
++
++.skip-link {
++  position: absolute;
++  top: 0.5rem;
++  left: 0.5rem;
++  z-index: 10;
++  padding: 0.6rem 0.85rem;
++  border-radius: 0.35rem;
++  background: var(--text);
++  color: var(--bg);
++  transform: translateY(-150%);
++}
++
++.skip-link:focus {
++  transform: translateY(0);
++}
++
++.site-header {
++  border-bottom: 1px solid var(--line);
++  background:
++    radial-gradient(circle at 90% 0%, var(--accent-soft), transparent 35rem),
++    var(--surface);
++}
++
++.site-header__inner,
++.course-nav,
++main,
++.site-footer {
++  width: min(calc(100% - 2rem), var(--measure));
++  margin-inline: auto;
++}
++
++.site-header__inner {
++  padding: 3.5rem 0 2.25rem;
++}
++
++.eyebrow {
++  margin: 0 0 0.4rem;
++  color: var(--accent);
++  font-size: 0.82rem;
++  font-weight: 800;
++  letter-spacing: 0.12em;
++  text-transform: uppercase;
++}
++
++h1,
++h2,
++h3 {
++  line-height: 1.16;
++  text-wrap: balance;
++}
++
++h1 {
++  max-width: 18ch;
++  margin: 0;
++  font-size: clamp(2.2rem, 7vw, 4.8rem);
++  letter-spacing: -0.045em;
++}
++
++h2 {
++  margin-top: 3rem;
++  font-size: clamp(1.55rem, 3vw, 2.25rem);
++}
++
++h3 {
++  margin-top: 2rem;
++  font-size: 1.25rem;
++}
++
++.lede {
++  max-width: 62ch;
++  margin: 1rem 0 0;
++  color: var(--muted);
++  font-size: 1.2rem;
++}
++
++.course-nav {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 0.45rem 1rem;
++  padding-block: 0.8rem;
++  font-size: 0.9rem;
++}
++
++.course-nav a[aria-current="page"] {
++  color: var(--text);
++  font-weight: 800;
++  text-decoration: none;
++}
++
++main {
++  padding-block: 2.25rem 4rem;
++}
++
++.outcome,
++.callout,
++.decision,
++.quiz,
++.reference-card {
++  margin-block: 1.5rem;
++  padding: 1.1rem 1.25rem;
++  border: 1px solid var(--line);
++  border-radius: var(--radius);
++  background: var(--surface);
++  box-shadow: var(--shadow);
++}
++
++.outcome {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  gap: 1rem;
++}
++
++.outcome p {
++  margin: 0;
++}
++
++.label {
++  display: block;
++  color: var(--muted);
++  font-size: 0.78rem;
++  font-weight: 800;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++}
++
++.callout {
++  border-left: 0.35rem solid var(--accent);
++  box-shadow: none;
++}
++
++.callout--warning {
++  border-left-color: var(--warning);
++  background: var(--warning-soft);
++}
++
++.callout--success {
++  border-left-color: var(--success);
++  background: var(--success-soft);
++}
++
++.callout > :first-child,
++.decision > :first-child,
++.reference-card > :first-child {
++  margin-top: 0;
++}
++
++.callout > :last-child,
++.decision > :last-child,
++.reference-card > :last-child {
++  margin-bottom: 0;
++}
++
++.badge {
++  display: inline-block;
++  margin: 0.15rem 0.2rem 0.15rem 0;
++  padding: 0.16rem 0.48rem;
++  border: 1px solid currentColor;
++  border-radius: 999px;
++  font-size: 0.78rem;
++  font-weight: 800;
++  line-height: 1.35;
++}
++
++.badge--safe {
++  color: var(--success);
++}
++
++.badge--write {
++  color: var(--warning);
++}
++
++.badge--interactive,
++.badge--content {
++  color: var(--danger);
++}
++
++pre {
++  overflow-x: auto;
++  margin-block: 1rem;
++  padding: 1rem 1.15rem;
++  border-radius: 0.55rem;
++  background: var(--code-bg);
++  color: var(--code-text);
++  font: 0.92rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
++  tab-size: 2;
++  white-space: pre;
++}
++
++code {
++  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
++}
++
++:not(pre) > code {
++  padding: 0.08em 0.28em;
++  border-radius: 0.25rem;
++  background: var(--surface-strong);
++  font-size: 0.92em;
++}
++
++.steps {
++  padding-left: 1.4rem;
++}
++
++.steps > li {
++  margin-block: 1.2rem;
++  padding-left: 0.4rem;
++}
++
++.steps > li::marker {
++  color: var(--accent);
++  font-weight: 900;
++}
++
++table {
++  width: 100%;
++  margin-block: 1.25rem;
++  border-collapse: collapse;
++  background: var(--surface);
++  font-size: 0.94rem;
++}
++
++th,
++td {
++  padding: 0.7rem;
++  border: 1px solid var(--line);
++  text-align: left;
++  vertical-align: top;
++}
++
++th {
++  background: var(--surface-strong);
++}
++
++fieldset {
++  min-width: 0;
++  margin: 0;
++  padding: 0;
++  border: 0;
++}
++
++legend {
++  margin-bottom: 0.85rem;
++  font-weight: 800;
++}
++
++.quiz label {
++  display: block;
++  margin-block: 0.55rem;
++  padding: 0.55rem 0.7rem;
++  border: 1px solid var(--line);
++  border-radius: 0.4rem;
++  cursor: pointer;
++}
++
++.quiz label:has(input:checked) {
++  border-color: var(--accent);
++  background: var(--accent-soft);
++}
++
++button {
++  margin-top: 0.8rem;
++  padding: 0.58rem 0.9rem;
++  border: 2px solid var(--accent);
++  border-radius: 0.4rem;
++  background: var(--accent);
++  color: var(--surface);
++  font: inherit;
++  font-weight: 800;
++  cursor: pointer;
++}
++
++button:hover {
++  background: var(--accent-strong);
++  border-color: var(--accent-strong);
++}
++
++.quiz__feedback {
++  min-height: 1.8rem;
++  margin: 0.85rem 0 0;
++  font-weight: 800;
++}
++
++.quiz__feedback[data-state="correct"] {
++  color: var(--success);
++}
++
++.quiz__feedback[data-state="incorrect"] {
++  color: var(--danger);
++}
++
++details {
++  margin-block: 0.8rem;
++}
++
++summary {
++  cursor: pointer;
++  font-weight: 800;
++}
++
++.lesson-links {
++  display: flex;
++  flex-wrap: wrap;
++  justify-content: space-between;
++  gap: 1rem;
++  margin-top: 3rem;
++  padding-top: 1.2rem;
++  border-top: 1px solid var(--line);
++}
++
++.site-footer {
++  padding-block: 1.5rem 2.5rem;
++  border-top: 1px solid var(--line);
++  color: var(--muted);
++  font-size: 0.9rem;
++}
++
++.print-only {
++  display: none;
++}
++
++@media (max-width: 44rem) {
++  .site-header__inner {
++    padding-top: 2.4rem;
++  }
++
++  .outcome {
++    grid-template-columns: 1fr;
++  }
++
++  table {
++    display: block;
++    overflow-x: auto;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  html {
++    scroll-behavior: auto;
++  }
++
++  *,
++  *::before,
++  *::after {
++    scroll-behavior: auto !important;
++    transition-duration: 0.01ms !important;
++  }
++}
++
++@media (forced-colors: active) {
++  .badge,
++  .callout,
++  .outcome,
++  .decision,
++  .quiz,
++  .reference-card {
++    border-color: CanvasText;
++  }
++}
++
++@media print {
++  :root {
++    color-scheme: light;
++    --bg: #fff;
++    --surface: #fff;
++    --surface-strong: #f2f2f2;
++    --text: #000;
++    --muted: #333;
++    --line: #777;
++    --shadow: none;
++  }
++
++  body {
++    font-size: 10.5pt;
++  }
++
++  .site-header__inner,
++  main,
++  .site-footer {
++    width: 100%;
++  }
++
++  .site-header__inner {
++    padding: 0 0 1rem;
++  }
++
++  .course-nav,
++  .skip-link,
++  .lesson-links,
++  .quiz button,
++  .site-footer {
++    display: none;
++  }
++
++  .print-only {
++    display: block;
++  }
++
++  h1 {
++    font-size: 28pt;
++  }
++
++  h2 {
++    break-after: avoid;
++  }
++
++  pre,
++  table,
++  .callout,
++  .decision,
++  .quiz,
++  .reference-card {
++    break-inside: avoid;
++  }
++
++  pre {
++    border: 1px solid #555;
++    background: #fff;
++    color: #000;
++    white-space: pre-wrap;
++  }
++}
+diff --git a/docs/learn/assets/lesson.js b/docs/learn/assets/lesson.js
+new file mode 100644
+index 0000000..36fc2c0
+--- /dev/null
++++ b/docs/learn/assets/lesson.js
+@@ -0,0 +1,28 @@
++document.documentElement.classList.add("js");
++
++for (const quiz of document.querySelectorAll("[data-quiz]")) {
++  const feedback = quiz.querySelector("[data-feedback]");
++  const expected = quiz.dataset.answer;
++
++  quiz.addEventListener("submit", (event) => {
++    event.preventDefault();
++
++    const selected = new FormData(quiz).get("answer");
++    if (!selected) {
++      feedback.textContent = "Choose one answer before checking.";
++      feedback.dataset.state = "incorrect";
++      return;
++    }
++
++    const correct = selected === expected;
++    feedback.textContent = correct
++      ? quiz.dataset.correctMessage
++      : quiz.dataset.incorrectMessage;
++    feedback.dataset.state = correct ? "correct" : "incorrect";
++  });
++
++  quiz.addEventListener("change", () => {
++    feedback.textContent = "";
++    delete feedback.dataset.state;
++  });
++}
+diff --git a/docs/learn/lessons/0001-build-an-inventory.html b/docs/learn/lessons/0001-build-an-inventory.html
+new file mode 100644
+index 0000000..5ca87e2
+--- /dev/null
++++ b/docs/learn/lessons/0001-build-an-inventory.html
+@@ -0,0 +1,168 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="color-scheme" content="light dark">
++    <title>Lesson 1: Build a trustworthy tss inventory</title>
++    <link rel="stylesheet" href="../assets/course.css">
++    <script src="../assets/lesson.js" defer></script>
++  </head>
++  <body>
++    <a class="skip-link" href="#content">Skip to lesson</a>
++    <header class="site-header">
++      <div class="site-header__inner">
++        <p class="eyebrow">Lesson 1 of 4</p>
++        <h1>Build a trustworthy inventory</h1>
++        <p class="lede">
++          Learn to distinguish a healthy scan, an optional skip, an incomplete
++          snapshot, and a source error.
++        </p>
++      </div>
++    </header>
++    <nav class="course-nav" aria-label="Course">
++      <a href="../README.md">Course index</a>
++      <a href="../MISSION.md">Mission</a>
++      <a href="../GLOSSARY.md">Glossary</a>
++      <a href="../reference/first-day-runbook.html">Runbook</a>
++      <a aria-current="page" href="0001-build-an-inventory.html">Lesson 1</a>
++    </nav>
++
++    <main id="content">
++      <div class="outcome">
++        <p><span class="label">Outcome</span>Judge whether a scan is safe to trust.</p>
++        <p><span class="label">Time</span>About 8 minutes.</p>
++      </div>
++
++      <section aria-labelledby="model-heading">
++        <h2 id="model-heading">A scan updates a projection</h2>
++        <p>
++          The source tool owns its historical store. <code>tss scan</code> reads
++          supported metadata and writes a normalized local inventory. It never
++          makes the inventory more authoritative than the evidence it received.
++        </p>
++        <div class="callout">
++          <p>
++            <span class="badge badge--write">Local inventory write</span>
++            Source stores remain read-only, but <code>scan</code> does mutate the
++            local <code>tss</code> inventory.
++          </p>
++        </div>
++      </section>
++
++      <section aria-labelledby="practice-heading">
++        <h2 id="practice-heading">Practice: classify each provider report</h2>
++        <ol class="steps">
++          <li>
++            Check configured paths and optional tools:
++            <pre><code>tss doctor</code></pre>
++          </li>
++          <li>
++            Ask for structured scan reports:
++            <pre><code>tss scan --json</code></pre>
++          </li>
++          <li>
++            Read this synthetic result:
++            <pre><code>[
++  {
++    "source": "claude",
++    "sessions": 4,
++    "runtimes": 0,
++    "skipped": false
++  },
++  {
++    "source": "codex",
++    "sessions": 2,
++    "runtimes": 0,
++    "skipped": false,
++    "message": "Codex scan incomplete: skipped 1 unreadable rollout"
++  },
++  {
++    "source": "herdr",
++    "sessions": 0,
++    "runtimes": 0,
++    "skipped": true,
++    "message": "Herdr is unavailable"
++  }
++]</code></pre>
++          </li>
++        </ol>
++
++        <table>
++          <thead>
++            <tr>
++              <th>Source</th>
++              <th>Decision</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td>Claude</td>
++              <td>Complete result; its source snapshot can reconcile.</td>
++            </tr>
++            <tr>
++              <td>Codex</td>
++              <td>Valid rows refresh, but prior Codex rows are not pruned.</td>
++            </tr>
++            <tr>
++              <td>Herdr</td>
++              <td>Optional live provider skipped; historical scans can still succeed.</td>
++            </tr>
++          </tbody>
++        </table>
++      </section>
++
++      <section aria-labelledby="retrieve-heading">
++        <h2 id="retrieve-heading">Retrieve the rule</h2>
++        <form
++          class="quiz"
++          data-quiz
++          data-answer="b"
++          data-correct-message="Correct. Incomplete evidence may refresh known-good rows, but it cannot justify deletion."
++          data-incorrect-message="Not yet. Incomplete evidence must preserve prior rows while accepting valid updates."
++          action="#"
++        >
++          <fieldset>
++            <legend>A Codex scan returns two valid sessions and one unreadable active rollout. What happens?</legend>
++            <label><input type="radio" name="answer" value="a"> Valid rows refresh and prior Codex rows are pruned.</label>
++            <label><input type="radio" name="answer" value="b"> Valid rows refresh and prior Codex rows remain preserved.</label>
++            <label><input type="radio" name="answer" value="c"> No rows refresh and prior Codex rows are deleted.</label>
++          </fieldset>
++          <button type="submit">Check decision</button>
++          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
++        </form>
++        <noscript>
++          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
++        </noscript>
++        <details>
++          <summary>Reveal answer and reasoning</summary>
++          <p>
++            Answer B. An incomplete snapshot can upsert valid sessions, but it
++            cannot prove that absent rows disappeared upstream.
++          </p>
++        </details>
++      </section>
++
++      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
++        <h2 id="checkpoint-heading">Checkpoint</h2>
++        <p>
++          You are ready for lesson 2 when you can explain why "skipped" is not
++          automatically an error and why "incomplete" disables pruning.
++        </p>
++      </section>
++
++      <nav class="lesson-links" aria-label="Lesson navigation">
++        <a href="../README.md">Back to course index</a>
++        <a href="0002-find-the-right-session.html">Next: find the right session</a>
++      </nav>
++    </main>
++
++    <footer class="site-footer">
++      <p>
++        Primary source:
++        <a href="../../source-adapters.md">Historical source adapters</a>.
++        Ask the agent about any scan result you cannot classify.
++      </p>
++    </footer>
++  </body>
++</html>
+diff --git a/docs/learn/lessons/0002-find-the-right-session.html b/docs/learn/lessons/0002-find-the-right-session.html
+new file mode 100644
+index 0000000..6cec666
+--- /dev/null
++++ b/docs/learn/lessons/0002-find-the-right-session.html
+@@ -0,0 +1,160 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="color-scheme" content="light dark">
++    <title>Lesson 2: Find the right tss session</title>
++    <link rel="stylesheet" href="../assets/course.css">
++    <script src="../assets/lesson.js" defer></script>
++  </head>
++  <body>
++    <a class="skip-link" href="#content">Skip to lesson</a>
++    <header class="site-header">
++      <div class="site-header__inner">
++        <p class="eyebrow">Lesson 2 of 4</p>
++        <h1>Find the right session</h1>
++        <p class="lede">
++          Narrow by metadata first, then inspect one exact record before
++          deciding how to return.
++        </p>
++      </div>
++    </header>
++    <nav class="course-nav" aria-label="Course">
++      <a href="../README.md">Course index</a>
++      <a href="../MISSION.md">Mission</a>
++      <a href="../GLOSSARY.md">Glossary</a>
++      <a href="../reference/first-day-runbook.html">Runbook</a>
++      <a aria-current="page" href="0002-find-the-right-session.html">Lesson 2</a>
++    </nav>
++
++    <main id="content">
++      <div class="outcome">
++        <p><span class="label">Outcome</span>Narrow metadata and inspect one exact session.</p>
++        <p><span class="label">Time</span>About 8 minutes.</p>
++      </div>
++
++      <div class="callout">
++        <p>
++          IDs and paths in this lesson are synthetic. Replace
++          <code>codex-demo123</code> with an ID returned by your own
++          <code>tss list</code>.
++        </p>
++      </div>
++
++      <section aria-labelledby="narrow-heading">
++        <h2 id="narrow-heading">Start broad, then add evidence</h2>
++        <p>
++          Session IDs are source-qualified. Project path, source, title, tags,
++          status, and recency help select the intended record without opening
++          transcript content.
++        </p>
++        <pre><code>tss list --limit 20
++tss list --source codex --query demo-api --sort last
++tss list --status needs_attention --tag review
++tss search demo-api --source claude</code></pre>
++        <p>
++          <span class="badge badge--safe">Metadata only</span>
++          These searches use normalized metadata and summaries.
++        </p>
++      </section>
++
++      <section aria-labelledby="inspect-heading">
++        <h2 id="inspect-heading">Inspect before action</h2>
++        <pre><code>tss show codex-demo123</code></pre>
++        <p>Check the fields that answer different questions:</p>
++        <table>
++          <thead>
++            <tr>
++              <th>Field</th>
++              <th>Question answered</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td>Source and native ID</td>
++              <td>Which tool owns the resume identity?</td>
++            </tr>
++            <tr>
++              <td>Project path</td>
++              <td>Which checkout or worktree does it belong to?</td>
++            </tr>
++            <tr>
++              <td>Last activity</td>
++              <td>Which candidate is most recent?</td>
++            </tr>
++            <tr>
++              <td>Status, title, tags, pin</td>
++              <td>What local operator context has been recorded?</td>
++            </tr>
++            <tr>
++              <td>Resume/attach commands</td>
++              <td>What return paths are available?</td>
++            </tr>
++          </tbody>
++        </table>
++      </section>
++
++      <section class="callout callout--warning" aria-labelledby="content-heading">
++        <h2 id="content-heading">Content search is a separate choice</h2>
++        <p>
++          <span class="badge badge--content">Explicit content access</span>
++          <code>tss search demo-api --content</code> lazily reads supported
++          transcript/content snippets. Do not add <code>--content</code> merely
++          to improve a metadata query.
++        </p>
++      </section>
++
++      <section aria-labelledby="retrieve-heading">
++        <h2 id="retrieve-heading">Choose the least-invasive query</h2>
++        <form
++          class="quiz"
++          data-quiz
++          data-answer="a"
++          data-correct-message="Correct. Source and query filters search metadata without opting into transcript content."
++          data-incorrect-message="Try again. The goal is to avoid transcript access until metadata proves insufficient."
++          action="#"
++        >
++          <fieldset>
++            <legend>You know the source is Codex and the project contains "demo-api." Which command should you try first?</legend>
++            <label><input type="radio" name="answer" value="a"> tss search demo-api --source codex</label>
++            <label><input type="radio" name="answer" value="b"> tss search demo-api --content</label>
++            <label><input type="radio" name="answer" value="c"> tss show --json demo-api</label>
++          </fieldset>
++          <button type="submit">Check decision</button>
++          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
++        </form>
++        <noscript>
++          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
++        </noscript>
++        <details>
++          <summary>Reveal answer and reasoning</summary>
++          <p>
++            Answer A. It combines known metadata evidence. Content access is
++            unnecessary, and <code>show</code> requires one session reference.
++          </p>
++        </details>
++      </section>
++
++      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
++        <h2 id="checkpoint-heading">Checkpoint</h2>
++        <p>
++          You are ready for lesson 3 when you can find one source-qualified
++          record and explain why its project path is evidence, not identity.
++        </p>
++      </section>
++
++      <nav class="lesson-links" aria-label="Lesson navigation">
++        <a href="0001-build-an-inventory.html">Previous: build an inventory</a>
++        <a href="0003-return-safely.html">Next: return safely</a>
++      </nav>
++    </main>
++
++    <footer class="site-footer">
++      <p>
++        Primary source: <a href="../../cheatsheet.md">tss cheatsheet</a>.
++        Ask the agent to explain any field whose provenance is unclear.
++      </p>
++    </footer>
++  </body>
++</html>
+diff --git a/docs/learn/lessons/0003-return-safely.html b/docs/learn/lessons/0003-return-safely.html
+new file mode 100644
+index 0000000..54056b1
+--- /dev/null
++++ b/docs/learn/lessons/0003-return-safely.html
+@@ -0,0 +1,171 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="color-scheme" content="light dark">
++    <title>Lesson 3: Return safely with tss</title>
++    <link rel="stylesheet" href="../assets/course.css">
++    <script src="../assets/lesson.js" defer></script>
++  </head>
++  <body>
++    <a class="skip-link" href="#content">Skip to lesson</a>
++    <header class="site-header">
++      <div class="site-header__inner">
++        <p class="eyebrow">Lesson 3 of 4</p>
++        <h1>Return without surprises</h1>
++        <p class="lede">
++          Choose attach, native resume, or a new workspace—and preview the exact
++          command before it runs.
++        </p>
++      </div>
++    </header>
++    <nav class="course-nav" aria-label="Course">
++      <a href="../README.md">Course index</a>
++      <a href="../MISSION.md">Mission</a>
++      <a href="../GLOSSARY.md">Glossary</a>
++      <a href="../reference/first-day-runbook.html">Runbook</a>
++      <a aria-current="page" href="0003-return-safely.html">Lesson 3</a>
++    </nav>
++
++    <main id="content">
++      <div class="outcome">
++        <p><span class="label">Outcome</span>Choose and preview the correct return path.</p>
++        <p><span class="label">Time</span>About 10 minutes.</p>
++      </div>
++
++      <div class="callout">
++        <p>
++          <code>codex-demo123</code> is synthetic. Use a session ID you inspected
++          with <code>tss show</code> when practicing locally.
++        </p>
++      </div>
++
++      <section aria-labelledby="paths-heading">
++        <h2 id="paths-heading">Three verbs, three intentions</h2>
++        <div class="reference-card">
++          <h3>Attach</h3>
++          <p>
++            Return to a stored matching live runtime when the preferred backend
++            has one. Otherwise, fall back to the historical session's native
++            resume command.
++          </p>
++          <pre><code>tss attach codex-demo123 --print</code></pre>
++        </div>
++        <div class="reference-card">
++          <h3>Resume</h3>
++          <p>
++            Resume is the source-native fallback stored on a historical
++            session. You normally reach it through <code>tss attach</code>, which
++            preserves source-specific environment such as
++            <code>CODEX_HOME</code>.
++          </p>
++        </div>
++        <div class="reference-card">
++          <h3>Open</h3>
++          <p>
++            Create a new Herdr workspace or tmux session in the same project
++            directory. This does not resume the old conversation.
++          </p>
++          <pre><code>tss open codex-demo123 --print</code></pre>
++        </div>
++      </section>
++
++      <section aria-labelledby="preview-heading">
++        <h2 id="preview-heading">Practice: inspect, preview, compare</h2>
++        <ol class="steps">
++          <li>
++            Reconfirm the selected record:
++            <pre><code>tss show codex-demo123</code></pre>
++          </li>
++          <li>
++            Preview the default return path:
++            <pre><code>tss attach codex-demo123 --print</code></pre>
++          </li>
++          <li>
++            If you need to compare a backend explicitly:
++            <pre><code>tss attach codex-demo123 --backend tmux --print
++tss attach codex-demo123 --backend herdr --print</code></pre>
++          </li>
++          <li>
++            Execute only after the command, project path, and identity match
++            your intent:
++            <pre><code>tss attach codex-demo123</code></pre>
++          </li>
++        </ol>
++        <div class="callout callout--warning">
++          <p>
++            <span class="badge badge--interactive">Interactive</span>
++            Removing <code>--print</code> may attach the terminal or start the
++            source agent. Command preview is the review boundary.
++          </p>
++        </div>
++      </section>
++
++      <section aria-labelledby="control-heading">
++        <h2 id="control-heading">Apply the same boundary to live control</h2>
++        <pre><code>tss send codex-demo123 "summarize the current blocker" --print
++tss read codex-demo123 --lines 80 --print
++tss run codex-demo123 --print -- go test ./...</code></pre>
++        <p>
++          These commands require a suitable live runtime. Preview mode lets you
++          inspect backend targeting and quoting before any input or command is
++          sent.
++        </p>
++      </section>
++
++      <section aria-labelledby="retrieve-heading">
++        <h2 id="retrieve-heading">Choose the return path</h2>
++        <form
++          class="quiz"
++          data-quiz
++          data-answer="b"
++          data-correct-message="Correct. Attach preview can reveal the native resume fallback without starting it."
++          data-incorrect-message="Try again. You want the old conversation, not merely a new shell in its directory."
++          action="#"
++        >
++          <fieldset>
++            <legend>No live runtime matches, but the historical Codex thread is resumable. You want that conversation. What comes first?</legend>
++            <label><input type="radio" name="answer" value="a"> tss open codex-demo123 --print</label>
++            <label><input type="radio" name="answer" value="b"> tss attach codex-demo123 --print</label>
++            <label><input type="radio" name="answer" value="c"> tss run codex-demo123 -- go test</label>
++          </fieldset>
++          <button type="submit">Check decision</button>
++          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
++        </form>
++        <noscript>
++          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
++        </noscript>
++        <details>
++          <summary>Reveal answer and reasoning</summary>
++          <p>
++            Answer B. Attach preview chooses the stored live target when one
++            exists and otherwise prints the exact source-native resume command.
++            Open would create a new environment, not restore the conversation.
++          </p>
++        </details>
++      </section>
++
++      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
++        <h2 id="checkpoint-heading">Checkpoint</h2>
++        <p>
++          You are ready for lesson 4 when you can explain the difference between
++          returning to an existing conversation and opening a new environment.
++        </p>
++      </section>
++
++      <nav class="lesson-links" aria-label="Lesson navigation">
++        <a href="0002-find-the-right-session.html">Previous: find a session</a>
++        <a href="0004-diagnose-live-state.html">Next: diagnose live state</a>
++      </nav>
++    </main>
++
++    <footer class="site-footer">
++      <p>
++        Primary source:
++        <a href="../../source-adapters.md">Historical source adapters</a>.
++        Ask the agent to explain a generated command before executing it.
++      </p>
++    </footer>
++  </body>
++</html>
+diff --git a/docs/learn/lessons/0004-diagnose-live-state.html b/docs/learn/lessons/0004-diagnose-live-state.html
+new file mode 100644
+index 0000000..1dea2a2
+--- /dev/null
++++ b/docs/learn/lessons/0004-diagnose-live-state.html
+@@ -0,0 +1,224 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="color-scheme" content="light dark">
++    <title>Lesson 4: Diagnose live state with tss</title>
++    <link rel="stylesheet" href="../assets/course.css">
++    <script src="../assets/lesson.js" defer></script>
++  </head>
++  <body>
++    <a class="skip-link" href="#content">Skip to lesson</a>
++    <header class="site-header">
++      <div class="site-header__inner">
++        <p class="eyebrow">Lesson 4 of 4</p>
++        <h1>Separate presence from state</h1>
++        <p class="lede">
++          Ask whether a runtime exists and what its agent is doing as two
++          different questions.
++        </p>
++      </div>
++    </header>
++    <nav class="course-nav" aria-label="Course">
++      <a href="../README.md">Course index</a>
++      <a href="../MISSION.md">Mission</a>
++      <a href="../GLOSSARY.md">Glossary</a>
++      <a href="../reference/first-day-runbook.html">Runbook</a>
++      <a aria-current="page" href="0004-diagnose-live-state.html">Lesson 4</a>
++    </nav>
++
++    <main id="content">
++      <div class="outcome">
++        <p><span class="label">Outcome</span>Interpret live evidence without inventing certainty.</p>
++        <p><span class="label">Time</span>About 10 minutes.</p>
++      </div>
++
++      <section aria-labelledby="axes-heading">
++        <h2 id="axes-heading">Two axes prevent one overloaded status</h2>
++        <p>
++          <code>runtime_presence</code> answers whether a matching live runtime
++          was observed. <code>agent_state</code> answers what the observed agent
++          is doing. Neither axis replaces local topology, failures, locks, or
++          final dashboard rollup.
++        </p>
++        <table>
++          <thead>
++            <tr>
++              <th>Presence</th>
++              <th>Agent state</th>
++              <th>Meaning</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td><code>present</code></td>
++              <td><code>working</code></td>
++              <td>A matching live agent is active.</td>
++            </tr>
++            <tr>
++              <td><code>present</code></td>
++              <td><code>ready</code></td>
++              <td>A matching live agent can accept input.</td>
++            </tr>
++            <tr>
++              <td><code>present</code></td>
++              <td><code>blocked</code></td>
++              <td>A matching live agent needs attention.</td>
++            </tr>
++            <tr>
++              <td><code>absent</code></td>
++              <td><code>unknown</code></td>
++              <td>No matching live runtime was observed.</td>
++            </tr>
++            <tr>
++              <td><code>stale</code></td>
++              <td><code>unknown</code></td>
++              <td>Runtime evidence exists but is outside its freshness window.</td>
++            </tr>
++            <tr>
++              <td><code>unknown</code></td>
++              <td><code>unknown</code></td>
++              <td>Coverage or match evidence is insufficient.</td>
++            </tr>
++          </tbody>
++        </table>
++        <div class="callout">
++          <p>
++            <strong>Ready is not idle.</strong> Ready requires a live agent.
++            Idle is a normalized inventory/dashboard concept for work not
++            currently active.
++          </p>
++        </div>
++      </section>
++
++      <section aria-labelledby="query-heading">
++        <h2 id="query-heading">Practice: issue one side-effect-free query</h2>
++        <p>
++          <span class="badge badge--safe">Side-effect-free</span>
++          This command does not scan, write the inventory, attach, focus, or
++          send input.
++        </p>
++        <pre><code>printf '%s\n' '{
++  "schema_version": 1,
++  "queries": [{
++    "query_id": "demo-api",
++    "path": "/workspaces/demo-api",
++    "repo_root": "/repos/demo",
++    "git_branch": "feature/demo"
++  }]
++}' | tss status --json</code></pre>
++        <p>Read the response from the outside in:</p>
++        <ol class="steps">
++          <li>Confirm <code>schema_version</code> and freshness timestamps.</li>
++          <li>Check provider availability and provider-level errors.</li>
++          <li>Find your opaque <code>query_id</code>.</li>
++          <li>Interpret presence and state separately.</li>
++          <li>Inspect match evidence, raw runtimes, and per-query errors.</li>
++        </ol>
++      </section>
++
++      <section aria-labelledby="response-heading">
++        <h2 id="response-heading">Read synthetic evidence</h2>
++        <pre><code>{
++  "schema_version": 1,
++  "observed_at": "2026-08-12T20:00:00Z",
++  "fresh_until": "2026-08-12T20:00:10Z",
++  "providers": [{
++    "name": "herdr",
++    "available": true,
++    "observed_at": "2026-08-12T20:00:00Z",
++    "fresh_until": "2026-08-12T20:00:10Z"
++  }, {
++    "name": "tmux",
++    "available": false,
++    "observed_at": "2026-08-12T20:00:00Z",
++    "fresh_until": "2026-08-12T20:00:10Z",
++    "error": "tmux is unavailable"
++  }],
++  "results": [{
++    "query_id": "demo-api",
++    "runtime_presence": "present",
++    "agent_state": "ready",
++    "match": {
++      "type": "repo_branch",
++      "matched_path": "/workspaces/demo-api"
++    },
++    "runtimes": [{
++      "observation_id": "herdr:demo",
++      "backend": "herdr",
++      "native_id": "demo",
++      "path": "/workspaces/demo-api",
++      "repo_root": "/repos/demo",
++      "git_branch": "feature/demo",
++      "runtime_presence": "present",
++      "agent_state": "ready",
++      "observed_at": "2026-08-12T20:00:00Z",
++      "expires_at": "2026-08-12T20:00:10Z"
++    }],
++    "errors": []
++  }]
++}</code></pre>
++        <p>
++          The result proves that a matching live Herdr runtime was observed and
++          could accept input during its freshness window. It does not prove that
++          the branch is healthy, tests pass, or no local lock exists.
++        </p>
++      </section>
++
++      <section aria-labelledby="retrieve-heading">
++        <h2 id="retrieve-heading">Interpret the state</h2>
++        <form
++          class="quiz"
++          data-quiz
++          data-answer="c"
++          data-correct-message="Correct. Ready describes a live agent that can accept input."
++          data-incorrect-message="Try again. Keep live-agent semantics separate from inventory or dashboard idleness."
++          action="#"
++        >
++          <fieldset>
++            <legend>A result says runtime_presence=present and agent_state=ready. What is justified?</legend>
++            <label><input type="radio" name="answer" value="a"> No live agent exists for this query.</label>
++            <label><input type="radio" name="answer" value="b"> The workspace has no remaining work.</label>
++            <label><input type="radio" name="answer" value="c"> A live agent can accept new input.</label>
++          </fieldset>
++          <button type="submit">Check decision</button>
++          <p class="quiz__feedback" data-feedback aria-live="polite" tabindex="-1"></p>
++        </form>
++        <noscript>
++          <p class="callout">JavaScript is off. Use the answer disclosure below.</p>
++        </noscript>
++        <details>
++          <summary>Reveal answer and reasoning</summary>
++          <p>
++            Answer C. Presence proves a matching runtime was observed; ready
++            means its agent can accept input. Neither claim establishes overall
++            workspace health or completion.
++          </p>
++        </details>
++      </section>
++
++      <section class="callout callout--success" aria-labelledby="checkpoint-heading">
++        <h2 id="checkpoint-heading">Mission checkpoint</h2>
++        <p>
++          You have completed the path when you can build an inventory, choose
++          one session, preview a safe return command, and explain live presence
++          separately from agent state without consulting the answer.
++        </p>
++      </section>
++
++      <nav class="lesson-links" aria-label="Lesson navigation">
++        <a href="0003-return-safely.html">Previous: return safely</a>
++        <a href="../reference/first-day-runbook.html">Keep the runbook</a>
++      </nav>
++    </main>
++
++    <footer class="site-footer">
++      <p>
++        Primary source:
++        <a href="../../runtime-status-contract.md">Runtime status provider contract</a>.
++        Ask the agent to explain any unknown match or provider error.
++      </p>
++    </footer>
++  </body>
++</html>
+diff --git a/docs/learn/reference/first-day-runbook.html b/docs/learn/reference/first-day-runbook.html
+new file mode 100644
+index 0000000..2b5f297
+--- /dev/null
++++ b/docs/learn/reference/first-day-runbook.html
+@@ -0,0 +1,317 @@
++<!doctype html>
++<html lang="en">
++  <head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <meta name="color-scheme" content="light dark">
++    <title>tss first-day runbook</title>
++    <link rel="stylesheet" href="../assets/course.css">
++  </head>
++  <body>
++    <a class="skip-link" href="#content">Skip to runbook</a>
++    <header class="site-header">
++      <div class="site-header__inner">
++        <p class="eyebrow">Printable reference</p>
++        <h1>First-day runbook</h1>
++        <p class="lede">
++          Build a trustworthy inventory, find the right work, and preview the
++          safest way back before anything interactive runs.
++        </p>
++      </div>
++    </header>
++    <nav class="course-nav" aria-label="Learning workspace">
++      <a href="../README.md">Course index</a>
++      <a href="../MISSION.md">Mission</a>
++      <a href="../GLOSSARY.md">Glossary</a>
++      <a href="../RESOURCES.md">Resources</a>
++      <a aria-current="page" href="first-day-runbook.html">Runbook</a>
++    </nav>
++
++    <main id="content">
++      <p class="print-only">
++        Local reference: docs/learn/reference/first-day-runbook.html
++      </p>
++
++      <section aria-labelledby="evidence-heading">
++        <h2 id="evidence-heading">1. Know which layer you are looking at</h2>
++        <table>
++          <thead>
++            <tr>
++              <th>Layer</th>
++              <th>Evidence</th>
++              <th>How it changes</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td>Source store</td>
++              <td>Agent-owned historical metadata and native resume identity.</td>
++              <td>The source tool owns it; <code>tss</code> reads it.</td>
++            </tr>
++            <tr>
++              <td>Inventory</td>
++              <td>Local normalized sessions in the <code>tss</code> database.</td>
++              <td>An explicit <code>tss scan</code> refreshes it.</td>
++            </tr>
++            <tr>
++              <td>Runtime</td>
++              <td>Live Herdr/tmux observations with freshness.</td>
++              <td><code>tss status --json</code> probes in memory.</td>
++            </tr>
++            <tr>
++              <td>Control</td>
++              <td>Attach, resume, open, send, read, or run commands.</td>
++              <td>Preview with <code>--print</code>; execute deliberately.</td>
++            </tr>
++          </tbody>
++        </table>
++      </section>
++
++      <section aria-labelledby="daily-heading">
++        <h2 id="daily-heading">2. Run the safe daily sequence</h2>
++        <ol class="steps">
++          <li>
++            <strong>Check discovery and configuration.</strong>
++            <span class="badge badge--safe">Read/health check</span>
++            <pre><code>tss doctor</code></pre>
++            Confirm the expected source paths exist. A missing optional backend
++            is not the same as a broken historical source.
++          </li>
++          <li>
++            <strong>Refresh the local inventory.</strong>
++            <span class="badge badge--write">Local inventory write</span>
++            <pre><code>tss scan --json</code></pre>
++            Source stores remain read-only. Inspect every report for
++            <code>skipped</code>, <code>message</code>, or <code>error</code>.
++          </li>
++          <li>
++            <strong>Narrow by metadata.</strong>
++            <span class="badge badge--safe">Metadata only</span>
++            <pre><code>tss list --limit 20
++tss list --source codex --query demo-api --sort last
++tss search demo-api --source claude</code></pre>
++            Do not add <code>--content</code> unless transcript/content access is
++            intentional.
++          </li>
++          <li>
++            <strong>Inspect one exact session.</strong>
++            <span class="badge badge--safe">Metadata only</span>
++            <pre><code>tss show &lt;session-id&gt;</code></pre>
++            Verify source, native ID, project path, timestamps, status, and the
++            available resume/attach commands.
++          </li>
++          <li>
++            <strong>Preview the return path.</strong>
++            <span class="badge badge--interactive">Interactive when executed</span>
++            <pre><code>tss attach &lt;session-id&gt; --print</code></pre>
++            Read the generated command. Remove <code>--print</code> only when the
++            target and action are correct.
++          </li>
++        </ol>
++      </section>
++
++      <section aria-labelledby="scan-heading">
++        <h2 id="scan-heading">3. Interpret scan reports</h2>
++        <table>
++          <thead>
++            <tr>
++              <th>Report</th>
++              <th>Meaning</th>
++              <th>Operator action</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td>Sessions/runtimes counted, no message</td>
++              <td>The source scan completed.</td>
++              <td>Continue to list and inspect.</td>
++            </tr>
++            <tr>
++              <td><code>skipped: true</code></td>
++              <td>The optional store/provider was unavailable.</td>
++              <td>Check <code>doctor</code>; ignore it if intentionally absent.</td>
++            </tr>
++            <tr>
++              <td>Incomplete warning</td>
++              <td>Valid rows refreshed, but not every authoritative item was readable.</td>
++              <td>Prior rows were preserved; retry after the source settles.</td>
++            </tr>
++            <tr>
++              <td><code>error</code></td>
++              <td>The source could not provide a usable scan.</td>
++              <td>Fix the source/path/schema issue; do not edit databases manually.</td>
++            </tr>
++          </tbody>
++        </table>
++      </section>
++
++      <section aria-labelledby="return-heading">
++        <h2 id="return-heading">4. Choose attach, resume, or open</h2>
++        <div class="decision">
++          <h3>A matching live runtime exists</h3>
++          <p>
++            Use <code>tss attach &lt;id&gt; --print</code>. It prefers the live
++            backend and shows the exact attach command.
++          </p>
++        </div>
++        <div class="decision">
++          <h3>No matching runtime, but the historical session is resumable</h3>
++          <p>
++            Use the same attach preview. <code>tss</code> falls back to the
++            source-qualified native resume command.
++          </p>
++        </div>
++        <div class="decision">
++          <h3>You want a new environment, not the old conversation</h3>
++          <p>
++            Use <code>tss open &lt;id&gt; --print</code>. This opens Herdr/tmux
++            in the project directory; it does not resume conversation history.
++          </p>
++        </div>
++      </section>
++
++      <section aria-labelledby="status-heading">
++        <h2 id="status-heading">5. Diagnose live state without scanning</h2>
++        <p>
++          <span class="badge badge--safe">Side-effect-free</span>
++          <code>status --json</code> does not open the inventory, scan sources,
++          attach, focus, or send input.
++        </p>
++        <pre><code>printf '%s\n' '{
++  "schema_version": 1,
++  "queries": [{
++    "query_id": "demo-api",
++    "path": "/workspaces/demo-api",
++    "repo_root": "/repos/demo",
++    "git_branch": "feature/demo"
++  }]
++}' | tss status --json</code></pre>
++
++        <table>
++          <thead>
++            <tr>
++              <th>Runtime presence</th>
++              <th>Agent state</th>
++              <th>Interpretation</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td><code>present</code></td>
++              <td><code>working</code></td>
++              <td>A matching live agent is doing work.</td>
++            </tr>
++            <tr>
++              <td><code>present</code></td>
++              <td><code>ready</code></td>
++              <td>A matching live agent can accept input.</td>
++            </tr>
++            <tr>
++              <td><code>present</code></td>
++              <td><code>blocked</code></td>
++              <td>Live evidence exists and needs attention.</td>
++            </tr>
++            <tr>
++              <td><code>absent</code></td>
++              <td><code>unknown</code></td>
++              <td>No matching live runtime was observed.</td>
++            </tr>
++            <tr>
++              <td><code>stale</code></td>
++              <td><code>unknown</code></td>
++              <td>Evidence exists but is outside its freshness window.</td>
++            </tr>
++            <tr>
++              <td><code>unknown</code></td>
++              <td><code>unknown</code></td>
++              <td>Provider coverage or match evidence is insufficient.</td>
++            </tr>
++          </tbody>
++        </table>
++      </section>
++
++      <section aria-labelledby="curate-heading">
++        <h2 id="curate-heading">6. Leave the next handoff cleaner</h2>
++        <pre><code>tss summarize &lt;session-id&gt;
++tss title &lt;session-id&gt; "Finish demo API migration"
++tss tag &lt;session-id&gt; demo,review
++tss pin &lt;session-id&gt;
++tss mark &lt;session-id&gt; needs_attention</code></pre>
++        <p>
++          Manual titles, tags, and pins survive scans for sessions that still
++          exist. A manual <code>mark</code> is transient: a later scan can
++          replace status with the source-derived value.
++        </p>
++      </section>
++
++      <section aria-labelledby="troubleshoot-heading">
++        <h2 id="troubleshoot-heading">7. Troubleshooting decisions</h2>
++        <table>
++          <thead>
++            <tr>
++              <th>Symptom</th>
++              <th>Check</th>
++              <th>Do not</th>
++            </tr>
++          </thead>
++          <tbody>
++            <tr>
++              <td>Expected source is skipped</td>
++              <td><code>tss doctor</code>, environment override, configured path.</td>
++              <td>Create fake source files.</td>
++            </tr>
++            <tr>
++              <td>Scan is incomplete</td>
++              <td>Retry after active writes settle; inspect the warning path.</td>
++              <td>Delete prior inventory rows.</td>
++            </tr>
++            <tr>
++              <td>Session reference is not found</td>
++              <td>Rescan, then use <code>list</code> or <code>search</code>.</td>
++              <td>Guess a native ID.</td>
++            </tr>
++            <tr>
++              <td>Attach target looks wrong</td>
++              <td><code>show</code>, then compare <code>attach --print</code>.</td>
++              <td>Execute before reviewing.</td>
++            </tr>
++            <tr>
++              <td>Live status is unknown</td>
++              <td>Provider availability, errors, path, repository, branch.</td>
++              <td>Treat unknown as absent.</td>
++            </tr>
++            <tr>
++              <td>Need transcript text</td>
++              <td>Use <code>search --content</code> only with explicit intent.</td>
++              <td>Assume metadata search reads content.</td>
++            </tr>
++          </tbody>
++        </table>
++      </section>
++
++      <section class="callout callout--warning" aria-labelledby="privacy-heading">
++        <h2 id="privacy-heading">Privacy checkpoint</h2>
++        <ul>
++          <li>Never commit the inventory database or source stores.</li>
++          <li>Redact IDs, paths, repositories, and output before filing issues.</li>
++          <li>Prefer metadata-only commands; content search is opt-in.</li>
++          <li>Review generated control commands before execution.</li>
++          <li>Do not edit source stores or SQLite to repair scan behavior.</li>
++        </ul>
++      </section>
++
++      <nav class="lesson-links" aria-label="Lessons">
++        <a href="../lessons/0001-build-an-inventory.html">Start lesson 1</a>
++        <a href="../lessons/0004-diagnose-live-state.html">Review live diagnosis</a>
++      </nav>
++    </main>
++
++    <footer class="site-footer">
++      <p>
++        Contract details:
++        <a href="../../runtime-status-contract.md">runtime status</a> and
++        <a href="../../source-adapters.md">historical sources</a>.
++      </p>
++    </footer>
++  </body>
++</html>
+diff --git a/docs/learn/templates/learning-record.md b/docs/learn/templates/learning-record.md
+new file mode 100644
+index 0000000..2f89e41
+--- /dev/null
++++ b/docs/learn/templates/learning-record.md
+@@ -0,0 +1,13 @@
++# What is now understood
++
++In one to three sentences, state the non-obvious concept you can now apply and
++why it changes a future `tss` decision.
++
++## Evidence
++
++Describe the decision, explanation, or exercise that demonstrated the
++understanding. Merely reading or completing a lesson is not evidence.
++
++## Implication
++
++State what can be taught next, skipped, or revisited because of this evidence.
+diff --git a/docs/learn/templates/notes.md b/docs/learn/templates/notes.md
+new file mode 100644
+index 0000000..65830e8
+--- /dev/null
++++ b/docs/learn/templates/notes.md
+@@ -0,0 +1,17 @@
++# Local learning notes
++
++Copy this file to `docs/learn/NOTES.md`. That path is ignored by Git.
++
++## Preferences
++
++- How I prefer to practice:
++- Time available:
++- Accessibility needs:
++
++## Questions
++
++- _Add questions here._
++
++## Revisit
++
++- _Add topics to revisit here._
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 884c091..9dc6fce 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -72,9 +72,9 @@ bounded first-line metadata reads, exact thread identities, optional indexed
+ names, source filtering, deduplication, and source-qualified resume commands.
+ Archived/compressed rollouts and t3code remain separate work.
+ 
+-## Next - operator learning runbook
++## Delivered - operator learning runbook
+ 
+-`operator-learning-runbook` is registered and unblocked. It adapts the
++`operator-learning-runbook` adapts the
+ [teach skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/teach)
+ into a `tss` operator curriculum: a concrete mission, trusted annotated
+ resources, canonical terminology, printable references, short practice
+@@ -92,7 +92,7 @@ commands with privacy-safe synthetic data.
+ | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
+ | `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. |
+ | `codex-session-adapter` | Codex historical adapter | Add active Codex JSONL rollout metadata, names, exact resume, filtering, and reconciliation. | Applied; archived and compressed rollouts remain deferred. |
+-| `operator-learning-runbook` | Operator onboarding | Build a mission-driven runbook and progressive learning workspace for discovering, curating, resuming, monitoring, and troubleshooting sessions. | Requested and unblocked; adapt the teach skill rather than copying its workspace layout blindly. |
++| `operator-learning-runbook` | Operator onboarding | Build a mission-driven runbook and progressive learning workspace for discovering, curating, resuming, monitoring, and troubleshooting sessions. | Applied; reusable material is committed and individual learning evidence stays local. |
+ | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
+ 
+ ## Milestones
+@@ -185,7 +185,7 @@ Target:
+ 
+ ### M7 - Operator learning
+ 
+-Next:
++Delivered:
+ 
+ - Define an observable operator mission and success criteria.
+ - Curate annotated primary resources for `tss` and each supported integration.
