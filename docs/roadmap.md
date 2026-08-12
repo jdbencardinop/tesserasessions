@@ -28,6 +28,7 @@ go test ./...
 ```text
 cli-inventory-core
 |-- docs-guide-cheatsheet        (soft)
+|   `-- operator-learning-runbook (hard)
 |-- live-herdr-tmux-control      (hard)
 |   `-- runtime-status-contract  (hard)
 |       `-- agent-source-expansion (soft ordering)
@@ -39,6 +40,8 @@ cli-inventory-core
 
 `runtime-status-contract` also depends directly on `cli-inventory-core`.
 `agent-source-expansion` keeps its existing hard dependency on the core.
+`operator-learning-runbook` also has a soft ordering edge from the latest
+Codex adapter so lessons reflect the complete current source inventory.
 
 ## Delivered - runtime status contract
 
@@ -69,6 +72,15 @@ bounded first-line metadata reads, exact thread identities, optional indexed
 names, source filtering, deduplication, and source-qualified resume commands.
 Archived/compressed rollouts and t3code remain separate work.
 
+## Next - operator learning runbook
+
+`operator-learning-runbook` is registered and unblocked. It adapts the
+[teach skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/teach)
+into a `tss` operator curriculum: a concrete mission, trusted annotated
+resources, canonical terminology, printable references, short practice
+lessons, and a policy for local learning records. Exercises must use real `tss`
+commands with privacy-safe synthetic data.
+
 ## Tracked features
 
 | Slug | Phase | Goal | Notes |
@@ -80,6 +92,7 @@ Archived/compressed rollouts and t3code remain separate work.
 | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
 | `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. |
 | `codex-session-adapter` | Codex historical adapter | Add active Codex JSONL rollout metadata, names, exact resume, filtering, and reconciliation. | Applied; archived and compressed rollouts remain deferred. |
+| `operator-learning-runbook` | Operator onboarding | Build a mission-driven runbook and progressive learning workspace for discovering, curating, resuming, monitoring, and troubleshooting sessions. | Requested and unblocked; adapt the teach skill rather than copying its workspace layout blindly. |
 | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
 
 ## Milestones
@@ -169,6 +182,18 @@ Target:
 - Fuzzy/content search. Initial `tss search`, `--content`, and optional `--fzf` are implemented.
 - Shell completions.
 - Better JSON output for scripting.
+
+### M7 - Operator learning
+
+Next:
+
+- Define an observable operator mission and success criteria.
+- Curate annotated primary resources for `tss` and each supported integration.
+- Establish a canonical glossary for inventory, runtime, and agent-state terms.
+- Produce a printable first-day runbook and troubleshooting references.
+- Add short, reusable practice lessons with privacy-safe synthetic fixtures.
+- Keep individual learning evidence local; commit only reusable formats and
+  generic course material.
 
 ## Design principles
 
