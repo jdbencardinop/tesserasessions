@@ -62,6 +62,7 @@ tss scan --source claude
 tss scan --source copilot
 tss scan --source hermes
 tss scan --source opencode
+tss scan --source codex
 tss scan --source herdr
 tss scan --source tmux
 tss scan --json
@@ -195,6 +196,7 @@ tss --db /tmp/tss.db list
 | `copilot` | `workspace.yaml` under `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
 | `hermes` | Read-only Hermes `state.db` |
 | `opencode` | Read-only OpenCode SQLite `session` + `project` tables |
+| `codex` | Active JSONL rollout metadata under `CODEX_HOME/sessions` |
 | `herdr` | Default JSON from `herdr agent list` |
 | `tmux` | Recognized coding-agent panes from `tmux list-panes -a` |
 

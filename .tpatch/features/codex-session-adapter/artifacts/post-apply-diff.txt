@@ -1,0 +1,11 @@
+ CHANGELOG.md                      |  3 ++
+ README.md                         |  7 +++-
+ docs/cheatsheet.md                |  2 ++
+ docs/roadmap.md                   | 16 ++++++---
+ docs/source-adapters.md           | 15 ++++++--
+ internal/adapters/scanner.go      |  1 +
+ internal/cli/root.go              |  9 ++++-
+ internal/cli/scan_runtime_test.go | 75 +++++++++++++++++++++++++++++++++++++++
+ internal/config/config.go         | 10 ++++++
+ internal/config/config_test.go    | 29 +++++++++++++++
+ 10 files changed, 159 insertions(+), 8 deletions(-)

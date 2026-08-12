@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "feature": "codex-session-adapter",
+  "current_generation": 1,
+  "generations": [
+    {
+      "generation": 1,
+      "generation_id": "pg_7a2be9be1519",
+      "kind": "record",
+      "patch_sha256": "f893c05af2cd913209f51a4a3b0e0af038e3263036923e55e33baa2f7a19ba39",
+      "git_patch_id": "0e7f875bd9065b3ef61d9076a644a96536143df9",
+      "git_patch_id_algorithm": "git-patch-id-stable",
+      "recipe_sha256": "55f19743c6c91e8c4b73a26384f6bcefae539bf5ae1731f0ea911b8216370e99",
+      "canonical_patch": "artifacts/post-apply.patch",
+      "audit_patch": "",
+      "base_commit": "3d0a29506514162bb3449f92da56d6ef74b08622",
+      "upper": {
+        "kind": "working-tree",
+        "ref": "working-tree",
+        "commit": ""
+      },
+      "capture": {
+        "mode": "working-tree-all",
+        "pathspecs": [
+          "CHANGELOG.md",
+          "README.md",
+          "docs/cheatsheet.md",
+          "docs/roadmap.md",
+          "docs/source-adapters.md",
+          "internal/adapters/codex.go",
+          "internal/adapters/codex_test.go",
+          "internal/adapters/scanner.go",
+          "internal/cli/root.go",
+          "internal/cli/scan_runtime_test.go",
+          "internal/config/config.go",
+          "internal/config/config_test.go"
+        ],
+        "claim_ids": []
+      },
+      "touched_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/cheatsheet.md",
+        "docs/roadmap.md",
+        "docs/source-adapters.md",
+        "internal/adapters/codex.go",
+        "internal/adapters/codex_test.go",
+        "internal/adapters/scanner.go",
+        "internal/cli/root.go",
+        "internal/cli/scan_runtime_test.go",
+        "internal/config/config.go",
+        "internal/config/config_test.go"
+      ],
+      "dependencies": [
+        {
+          "slug": "agent-source-expansion",
+          "kind": "hard",
+          "satisfied_by": "",
+          "parent_generation": 2,
+          "parent_patch_sha256": "fa2a1d414e57cc19eefa0b62eb43d16c4aa67b4dc15922c55eaff256c6433a88",
+          "parent_recipe_sha256": "01f0dffbf8929ef70afc29113fef71d3922f13d2e8e10a572152cd81613488e6"
+        }
+      ],
+      "refs": {
+        "anchors": "",
+        "fingerprints": "",
+        "relations": "",
+        "vector_manifest": ""
+      }
+    }
+  ]
+}

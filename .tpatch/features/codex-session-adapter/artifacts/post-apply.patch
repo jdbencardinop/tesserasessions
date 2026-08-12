@@ -1,0 +1,960 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index cec736a..4ea92db 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -21,4 +21,7 @@ All notable changes to `tesserasessions` will be documented in this file.
+   snapshots.
+ - Preserve source-store environment in exact resume commands and continue
+   Claude metadata scanning after oversized payload rows.
++- Add a read-only OpenAI Codex CLI adapter for active JSONL rollout metadata,
++  exact thread resume, interactive-source filtering, indexed names, and
++  authoritative reconciliation.
+ - Add tpatch-tracked roadmap metadata and project documentation.
+diff --git a/README.md b/README.md
+index 35f2173..f3cb61c 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,7 @@
+ # tesserasessions
+ 
+-`tss` is a local-first CLI for inventorying coding-agent sessions across tools like GitHub Copilot CLI, Claude Code, Herdr, and tmux.
++`tss` is a local-first CLI for inventorying coding-agent sessions across tools
++like GitHub Copilot CLI, Claude Code, Hermes, OpenCode, Codex, Herdr, and tmux.
+ 
+ It answers: "What agent sessions exist, what project are they for, when did they last move, and how do I get back to them?"
+ 
+@@ -109,6 +110,7 @@ Useful flags:
+ 
+ ```sh
+ tss scan --source claude
++tss scan --source codex
+ printf '%s\n' '{"schema_version":1,"queries":[{"query_id":"repo","path":"/absolute/repo"}]}' | tss status --json
+ tss list --source copilot --limit 10
+ tss list --query tesseraspaces
+@@ -146,6 +148,8 @@ Initial adapters:
+   `COPILOT_HOME/session-state`.
+ - `hermes`: opens the current Hermes `state.db` read-only.
+ - `opencode`: opens the current OpenCode SQLite database read-only.
++- `codex`: reads the bounded metadata line from active Codex rollout JSONL
++  files under `CODEX_HOME` and uses the optional session-name index.
+ - `herdr`: uses the default JSON from `herdr agent list` when Herdr is installed
+   and running, preserving agent target, pane IDs, and `agent_status`.
+ - `tmux`: uses `tmux list-panes -a` and reports only panes whose foreground
+@@ -168,6 +172,7 @@ Overrides:
+ ```sh
+ TSS_CONFIG=/path/to/config.yaml tss scan
+ TSS_DATA_DIR=/path/to/data tss scan
++CODEX_HOME=/path/to/codex-home tss scan --source codex
+ tss --db /path/to/sessions.db list
+ ```
+ 
+diff --git a/docs/cheatsheet.md b/docs/cheatsheet.md
+index f90782f..ffacc7f 100644
+--- a/docs/cheatsheet.md
++++ b/docs/cheatsheet.md
+@@ -62,6 +62,7 @@ tss scan --source claude
+ tss scan --source copilot
+ tss scan --source hermes
+ tss scan --source opencode
++tss scan --source codex
+ tss scan --source herdr
+ tss scan --source tmux
+ tss scan --json
+@@ -195,6 +196,7 @@ tss --db /tmp/tss.db list
+ | `copilot` | `workspace.yaml` under `~/.copilot/session-state` or `COPILOT_HOME/session-state` |
+ | `hermes` | Read-only Hermes `state.db` |
+ | `opencode` | Read-only OpenCode SQLite `session` + `project` tables |
++| `codex` | Active JSONL rollout metadata under `CODEX_HOME/sessions` |
+ | `herdr` | Default JSON from `herdr agent list` |
+ | `tmux` | Recognized coding-agent panes from `tmux list-panes -a` |
+ 
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 1a9b1f5..72b700b 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -31,6 +31,7 @@ cli-inventory-core
+ |-- live-herdr-tmux-control      (hard)
+ |   `-- runtime-status-contract  (hard)
+ |       `-- agent-source-expansion (soft ordering)
++|           `-- codex-session-adapter (hard)
+ |-- smart-session-summaries      (hard)
+ `-- session-ux-roadmap           (hard)
+     `-- smart-session-summaries  (soft ordering hint)
+@@ -59,8 +60,14 @@ See [Runtime status provider contract](runtime-status-contract.md).
+ 
+ `agent-source-expansion` hardened the existing Claude/Copilot adapters and added
+ current Hermes/OpenCode SQLite stores while retaining the metadata-first,
+-read-only boundary. Codex and t3code remain later, separate work that should be
+-registered as independent features.
++read-only boundary.
++
++## Delivered - Codex session adapter
++
++`codex-session-adapter` adds active OpenAI Codex CLI rollout discovery through
++bounded first-line metadata reads, exact thread identities, optional indexed
++names, source filtering, deduplication, and source-qualified resume commands.
++Archived/compressed rollouts and t3code remain separate work.
+ 
+ ## Tracked features
+ 
+@@ -71,7 +78,8 @@ registered as independent features.
+ | `live-herdr-tmux-control` | Live-control foundation | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Applied; Herdr remains preferred and tmux remains fallback. |
+ | `runtime-status-contract` | Status provider | Publish a side-effect-free batch JSON provider with freshness, match evidence, raw runtimes, and separate presence/agent-state aggregates. | Applied and verified; does not own the `tws` rollup and never guesses cwd-less sessions. |
+ | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
+-| `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. Codex/t3code remain later. |
++| `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. |
++| `codex-session-adapter` | Codex historical adapter | Add active Codex JSONL rollout metadata, names, exact resume, filtering, and reconciliation. | Applied; archived and compressed rollouts remain deferred. |
+ | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
+ 
+ ## Milestones
+@@ -143,11 +151,11 @@ Delivered:
+ - Exact Claude/Copilot metadata and resume identities.
+ - Hermes Agent state database/sessions.
+ - OpenCode SQLite sessions/projects.
++- Active Codex JSONL rollout metadata and exact thread resume.
+ - Parser fixtures using redacted or synthetic data.
+ 
+ Remaining:
+ 
+-- Codex historical sessions as a separate feature.
+ - t3code application/server sessions as a separate feature after Codex or when
+   the desktop/server inventory contract is defined.
+ 
+diff --git a/docs/source-adapters.md b/docs/source-adapters.md
+index b42a256..8d9a4a4 100644
+--- a/docs/source-adapters.md
++++ b/docs/source-adapters.md
+@@ -11,6 +11,7 @@ opened read-only and remain authoritative.
+ | GitHub Copilot CLI | `~/.copilot/session-state/*/workspace.yaml` or `COPILOT_HOME` | Reads workspace ID, cwd/Git root, repository, branch, name, and timestamps. | `copilot --resume=<id>` |
+ | Hermes Agent | `${HERMES_HOME}/state.db`, active profile DB, or `sources.hermes_database` | Queries a private DB+WAL/journal snapshot; lists unarchived logical CLI roots from metadata columns only. | `hermes --resume <id>` |
+ | OpenCode | `OPENCODE_DB`, XDG data DB, or `sources.opencode_database` | Queries a private DB+WAL/journal snapshot; joins non-archived root sessions to projects. | `opencode --session <id>` |
++| OpenAI Codex CLI | `${CODEX_HOME}/sessions/**/*.jsonl` or `sources.codex_home` | Reads only each active rollout's bounded first `session_meta` line; optionally enriches names from `session_index.jsonl`. | `codex resume <id>` |
+ 
+ Herdr and tmux are separate live-runtime providers. They are not historical
+ transcript stores.
+@@ -23,6 +24,7 @@ sources:
+   copilot_session_state: ~/.copilot/session-state
+   hermes_database: ~/.hermes/state.db
+   opencode_database: ~/.local/share/opencode/opencode.db
++  codex_home: ~/.codex
+ ```
+ 
+ Environment precedence:
+@@ -34,6 +36,7 @@ Environment precedence:
+ - OpenCode: `OPENCODE_DB`, then `XDG_DATA_HOME`, then
+   `~/.local/share/opencode/opencode.db` on every platform, matching OpenCode's
+   `xdg-basedir` dependency.
++- Codex: `CODEX_HOME`, then `~/.codex`.
+ - Hermes on Windows defaults to `%LOCALAPPDATA%\hermes\state.db`.
+ 
+ Explicit config values override these defaults.
+@@ -45,6 +48,7 @@ CLAUDE_CONFIG_DIR='/custom/claude' claude --resume '<id>'
+ COPILOT_HOME='/custom/copilot' copilot --resume='<id>'
+ HERMES_HOME='/custom/hermes/profiles/coder' hermes --resume '<id>'
+ OPENCODE_DB='/custom/opencode.db' opencode --session '<id>'
++CODEX_HOME='/custom/codex' codex resume '<id>'
+ ```
+ 
+ When a root `HERMES_HOME` or the platform default contains a non-default
+@@ -65,6 +69,9 @@ redirect the resume command to another database.
+ - Hermes message content, system prompts, gateway routing identity, and user/chat
+   identifiers are not queried.
+ - OpenCode messages, parts, credentials, events, and prompts are not queried.
++- Codex prompts, responses, and tool calls after the first metadata line are
++  not read. The narrow metadata decoder ignores and never retains embedded base
++  instructions, dynamic tools, or repository URLs.
+ - Claude transcript content is not needed for inventory metadata; content
+   remains available only to explicit lazy search/summarize workflows.
+ - Copilot `events.jsonl` and `session.db` are not read by the inventory scanner;
+@@ -75,14 +82,18 @@ redirect the resume command to another database.
+ - Hermes: `source='cli'`, unarchived logical roots only; compression chains use
+   their latest continuation metadata.
+ - OpenCode: non-archived root sessions with valid project relationships only.
++- Codex: active independently resumable `cli`, `vscode`, `atlas`, and `chatgpt`
++  roots only. Parent threads and noninteractive/internal sources are excluded.
+ - Claude/Copilot: one inventory row per native session/workspace ID.
+ 
+ Successful authoritative scans reconcile the local inventory: sessions deleted,
+ archived, or filtered out upstream disappear locally. Manual titles, pins, and
+ tags remain attached to sessions that still exist. Missing, failed, or malformed
+-source scans never prune prior inventory rows.
++source scans never prune prior inventory rows. A partial Codex rollout is
++reported as an incomplete scan; other valid Codex rows still refresh.
+ 
+ Hermes branch conversations are deferred; compression continuations are
+ projected into their stable root inventory entry. Archived sessions, internal
+ delegate/tool children, OpenCode legacy JSON, development-channel OpenCode
+-databases, Codex, and t3code are follow-up compatibility work.
++databases, Codex archived or `.jsonl.zst` rollouts, Codex SQLite acceleration,
++and t3code are follow-up compatibility work.
+diff --git a/internal/adapters/codex.go b/internal/adapters/codex.go
+new file mode 100644
+index 0000000..e6efba2
+--- /dev/null
++++ b/internal/adapters/codex.go
+@@ -0,0 +1,268 @@
++package adapters
++
++import (
++	"bufio"
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"os"
++	"path/filepath"
++	"sort"
++	"strings"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++const codexMetadataLineLimit = 8 * 1024 * 1024
++
++type CodexScanner struct {
++	Home string
++}
++
++func (s CodexScanner) Name() string {
++	return "codex"
++}
++
++func (s CodexScanner) Scan(ctx context.Context) core.ScanResult {
++	result := core.ScanResult{Source: s.Name()}
++	var messages []string
++	sessionsRoot := filepath.Join(s.Home, "sessions")
++	if !core.ExistingDir(sessionsRoot) {
++		result.Skipped = true
++		result.Message = "Codex sessions directory not found"
++		return result
++	}
++	names, err := readCodexSessionNames(filepath.Join(s.Home, "session_index.jsonl"))
++	if err != nil {
++		names = make(map[string]string)
++		messages = append(messages, fmt.Sprintf("Codex session name index unavailable: %v", err))
++	}
++
++	candidates := make(map[string]codexCandidate)
++	unreadableRollouts := 0
++	var firstUnreadable error
++	recordUnreadable := func(err error) {
++		unreadableRollouts++
++		if firstUnreadable == nil {
++			firstUnreadable = err
++		}
++	}
++	err = filepath.WalkDir(sessionsRoot, func(path string, entry os.DirEntry, walkErr error) error {
++		if walkErr != nil {
++			return walkErr
++		}
++		if ctx.Err() != nil {
++			return ctx.Err()
++		}
++		if entry.IsDir() ||
++			!strings.HasPrefix(entry.Name(), "rollout-") ||
++			filepath.Ext(entry.Name()) != ".jsonl" {
++			return nil
++		}
++		info, err := entry.Info()
++		if err != nil {
++			recordUnreadable(fmt.Errorf("%s: reading file metadata: %w", path, err))
++			return nil
++		}
++		if !info.Mode().IsRegular() {
++			return nil
++		}
++		metadata, err := readCodexRolloutMetadata(path)
++		if err != nil {
++			recordUnreadable(err)
++			return nil
++		}
++		if !metadata.resumable() {
++			return nil
++		}
++		candidate := codexCandidate{metadata: metadata, path: path, updatedAt: info.ModTime().UTC()}
++		existing, found := candidates[metadata.ID]
++		if !found ||
++			candidate.updatedAt.After(existing.updatedAt) ||
++			(candidate.updatedAt.Equal(existing.updatedAt) && candidate.path > existing.path) {
++			candidates[metadata.ID] = candidate
++		}
++		return nil
++	})
++	if err != nil {
++		result.Err = fmt.Errorf("scanning Codex sessions: %w", err)
++		return result
++	}
++
++	result.Sessions = make([]core.Session, 0, len(candidates))
++	for _, candidate := range candidates {
++		metadata := candidate.metadata
++		title := strings.TrimSpace(names[metadata.ID])
++		if title == "" {
++			title = "Codex: " + core.ProjectName(metadata.CWD)
++		}
++		session := core.NewSession("codex", metadata.ID)
++		session.ProjectPath = metadata.CWD
++		session.Agent = "codex"
++		session.Title = core.Truncate(title, 120)
++		session.Status = core.StatusUnknown
++		session.CreatedAt = metadata.CreatedAt
++		session.LastActivityAt = candidate.updatedAt
++		resume := commandWithEnv("CODEX_HOME", s.Home, "codex resume "+core.ShellQuote(metadata.ID))
++		session.ResumeCommand = resumeInDirectory(metadata.CWD, resume)
++		session.RawPath = candidate.path
++		result.Sessions = append(result.Sessions, session)
++	}
++	sort.Slice(result.Sessions, func(i, j int) bool {
++		if result.Sessions[i].LastActivityAt.Equal(result.Sessions[j].LastActivityAt) {
++			return result.Sessions[i].NativeID < result.Sessions[j].NativeID
++		}
++		return result.Sessions[i].LastActivityAt.After(result.Sessions[j].LastActivityAt)
++	})
++	if unreadableRollouts > 0 {
++		messages = append(messages, fmt.Sprintf(
++			"Codex scan incomplete: skipped %d unreadable rollout(s); first error: %v",
++			unreadableRollouts,
++			firstUnreadable,
++		))
++	}
++	result.Message = strings.Join(messages, "; ")
++	result.SessionSnapshotComplete = unreadableRollouts == 0
++	return result
++}
++
++type codexCandidate struct {
++	metadata  codexMetadata
++	path      string
++	updatedAt time.Time
++}
++
++type codexRolloutLine struct {
++	Timestamp string          `json:"timestamp"`
++	Type      string          `json:"type"`
++	Payload   json.RawMessage `json:"payload"`
++}
++
++type codexMetadata struct {
++	ID           string          `json:"id"`
++	ParentThread *string         `json:"parent_thread_id"`
++	Timestamp    string          `json:"timestamp"`
++	CWD          string          `json:"cwd"`
++	Source       json.RawMessage `json:"source"`
++	HistoryMode  string          `json:"history_mode"`
++	CreatedAt    time.Time       `json:"-"`
++}
++
++func (metadata codexMetadata) resumable() bool {
++	if metadata.ID == "" || metadata.CWD == "" || !filepath.IsAbs(metadata.CWD) || metadata.CreatedAt.IsZero() {
++		return false
++	}
++	if metadata.ParentThread != nil && strings.TrimSpace(*metadata.ParentThread) != "" {
++		return false
++	}
++	if metadata.HistoryMode != "" &&
++		metadata.HistoryMode != "legacy" &&
++		metadata.HistoryMode != "paginated" {
++		return false
++	}
++	return codexInteractiveSource(metadata.Source)
++}
++
++func readCodexRolloutMetadata(path string) (codexMetadata, error) {
++	file, err := os.Open(path)
++	if err != nil {
++		return codexMetadata{}, err
++	}
++	defer file.Close() //nolint:errcheck
++	reader := bufio.NewReaderSize(file, 64*1024)
++	line, err := readBoundedLine(reader, codexMetadataLineLimit)
++	if err != nil {
++		return codexMetadata{}, fmt.Errorf("%s: reading first rollout line: %w", path, err)
++	}
++	if len(line) == 0 {
++		return codexMetadata{}, fmt.Errorf("%s: empty or oversized first rollout line", path)
++	}
++	var envelope codexRolloutLine
++	if err := json.Unmarshal(line, &envelope); err != nil {
++		return codexMetadata{}, fmt.Errorf("%s: invalid first rollout line: %w", path, err)
++	}
++	if envelope.Type != "session_meta" {
++		return codexMetadata{}, fmt.Errorf("%s: first rollout item is %q, want session_meta", path, envelope.Type)
++	}
++	var metadata codexMetadata
++	if err := json.Unmarshal(envelope.Payload, &metadata); err != nil {
++		return codexMetadata{}, fmt.Errorf("%s: invalid session metadata: %w", path, err)
++	}
++	metadata.ID = strings.TrimSpace(metadata.ID)
++	metadata.CWD = filepath.Clean(strings.TrimSpace(metadata.CWD))
++	metadata.HistoryMode = strings.ToLower(strings.TrimSpace(metadata.HistoryMode))
++	metadata.CreatedAt = parseTimeString(firstNonEmpty(metadata.Timestamp, envelope.Timestamp))
++	if metadata.ID == "" {
++		return codexMetadata{}, fmt.Errorf("%s: session metadata has empty thread id", path)
++	}
++	if metadata.CWD == "." || metadata.CWD == "" || !filepath.IsAbs(metadata.CWD) {
++		return codexMetadata{}, fmt.Errorf("%s: session metadata has invalid cwd %q", path, metadata.CWD)
++	}
++	if metadata.CreatedAt.IsZero() {
++		return codexMetadata{}, fmt.Errorf("%s: session metadata has invalid timestamp", path)
++	}
++	return metadata, nil
++}
++
++func codexInteractiveSource(raw json.RawMessage) bool {
++	if len(raw) == 0 {
++		return true // SessionSource defaults to VSCode.
++	}
++	if string(raw) == "null" {
++		return false
++	}
++	var source string
++	if err := json.Unmarshal(raw, &source); err == nil {
++		source = strings.ToLower(strings.TrimSpace(source))
++		return source == "cli" || source == "vscode"
++	}
++	var custom map[string]string
++	if err := json.Unmarshal(raw, &custom); err != nil {
++		return false
++	}
++	value := strings.ToLower(strings.TrimSpace(custom["custom"]))
++	return value == "atlas" || value == "chatgpt"
++}
++
++type codexSessionIndexEntry struct {
++	ID         string `json:"id"`
++	ThreadName string `json:"thread_name"`
++	UpdatedAt  string `json:"updated_at"`
++}
++
++func readCodexSessionNames(path string) (map[string]string, error) {
++	names := make(map[string]string)
++	file, err := os.Open(path)
++	if os.IsNotExist(err) {
++		return names, nil
++	}
++	if err != nil {
++		return nil, fmt.Errorf("opening %s: %w", path, err)
++	}
++	defer file.Close() //nolint:errcheck
++	reader := bufio.NewReaderSize(file, 64*1024)
++	for {
++		line, err := readBoundedLine(reader, 1024*1024)
++		if err == io.EOF {
++			break
++		}
++		if err != nil {
++			return nil, fmt.Errorf("reading %s: %w", path, err)
++		}
++		if len(line) == 0 {
++			continue
++		}
++		var entry codexSessionIndexEntry
++		if json.Unmarshal(line, &entry) != nil {
++			continue
++		}
++		entry.ID = strings.TrimSpace(entry.ID)
++		entry.ThreadName = strings.TrimSpace(entry.ThreadName)
++		if entry.ID != "" {
++			names[entry.ID] = entry.ThreadName
++		}
++	}
++	return names, nil
++}
+diff --git a/internal/adapters/codex_test.go b/internal/adapters/codex_test.go
+new file mode 100644
+index 0000000..bafc6f2
+--- /dev/null
++++ b/internal/adapters/codex_test.go
+@@ -0,0 +1,269 @@
++package adapters
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/jdbencardinop/tesserasessions/internal/core"
++)
++
++func TestCodexScannerEnumeratesResumableInteractiveThreads(t *testing.T) {
++	home := t.TempDir()
++	sessions := filepath.Join(home, "sessions")
++	old := time.Unix(100, 0)
++	newer := time.Unix(200, 0)
++
++	writeCodexRollout(t, sessions, "rollout-legacy-thread-flat.jsonl", codexPayload(
++		"thread-flat", "/repo/flat", "cli", nil, "legacy", "2026-01-01T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/02/rollout-old-thread-cli.jsonl", codexPayload(
++		"thread-cli", "/repo/old", "cli", nil, "legacy", "2026-01-02T00:00:00Z",
++	), old)
++	newestPath := writeCodexRollout(t, sessions, "2026/01/03/rollout-new-thread-cli_rollout.jsonl", codexPayload(
++		"thread-cli", "/repo/new", "cli", nil, "paginated", "2026-01-03T00:00:00Z",
++	), newer)
++	writeCodexRollout(t, sessions, "2026/01/04/rollout-vscode.jsonl", codexPayload(
++		"thread-vscode", "/repo/vscode", nil, nil, "", "2026-01-04T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/05/rollout-atlas.jsonl", codexPayload(
++		"thread-atlas", "/repo/atlas", map[string]string{"custom": "atlas"}, nil, "legacy", "2026-01-05T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/06/rollout-chatgpt.jsonl", codexPayload(
++		"thread-chatgpt", "/repo/chatgpt", map[string]string{"custom": "chatgpt"}, nil, "legacy", "2026-01-06T00:00:00Z",
++	), old)
++	fork := codexPayload(
++		"thread-fork", "/repo/fork", "cli", nil, "legacy", "2026-01-06T12:00:00Z",
++	)
++	fork["forked_from_id"] = "thread-cli"
++	writeCodexRollout(t, sessions, "2026/01/06/rollout-fork.jsonl", fork, old)
++
++	parent := "thread-cli"
++	writeCodexRollout(t, sessions, "2026/01/07/rollout-subagent.jsonl", codexPayload(
++		"thread-subagent", "/repo/subagent", "cli", &parent, "legacy", "2026-01-07T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/08/rollout-exec.jsonl", codexPayload(
++		"thread-exec", "/repo/exec", "exec", nil, "legacy", "2026-01-08T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/09/rollout-custom.jsonl", codexPayload(
++		"thread-custom", "/repo/custom", map[string]string{"custom": "other"}, nil, "legacy", "2026-01-09T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/10/rollout-future.jsonl", codexPayload(
++		"thread-future", "/repo/future", "cli", nil, "future", "2026-01-10T00:00:00Z",
++	), old)
++	nullSource := codexPayload(
++		"thread-null", "/repo/null", nil, nil, "legacy", "2026-01-11T00:00:00Z",
++	)
++	nullSource["source"] = nil
++	writeCodexRollout(t, sessions, "2026/01/11/rollout-null-source.jsonl", nullSource, old)
++	writeCodexRollout(t, sessions, "2026/01/12/rollout-internal.jsonl", codexPayload(
++		"thread-internal", "/repo/internal", map[string]any{"internal": "compact"}, nil, "legacy", "2026-01-12T00:00:00Z",
++	), old)
++	writeCodexRollout(t, sessions, "2026/01/13/rollout-source-subagent.jsonl", codexPayload(
++		"thread-source-subagent", "/repo/subagent", map[string]any{"subagent": "review"}, nil, "legacy", "2026-01-13T00:00:00Z",
++	), old)
++	if err := os.WriteFile(filepath.Join(sessions, "unrelated.jsonl"), []byte("{\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(sessions, "rollout-compressed.jsonl.zst"), []byte("{\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	linkTarget := filepath.Join(home, "private-rollout.jsonl")
++	if err := os.WriteFile(linkTarget, []byte("{\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Symlink(linkTarget, filepath.Join(sessions, "rollout-linked.jsonl")); err != nil {
++		t.Logf("symlink fixture unavailable: %v", err)
++	}
++	archived := filepath.Join(home, "archived_sessions", "rollout-archived.jsonl")
++	if err := os.MkdirAll(filepath.Dir(archived), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(archived, []byte("{\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	index := strings.Join([]string{
++		`{"id":"thread-cli","thread_name":"old name","updated_at":"2026-01-02T00:00:00Z"}`,
++		`not-json`,
++		`{"id":"thread-cli","thread_name":"renamed thread","updated_at":"2026-01-03T00:00:00Z"}`,
++		`{"id":"thread-flat","thread_name":"flat thread","updated_at":"2026-01-01T00:00:00Z"}`,
++	}, "\n") + "\n"
++	if err := os.WriteFile(filepath.Join(home, "session_index.jsonl"), []byte(index), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	result := (CodexScanner{Home: home}).Scan(context.Background())
++	if result.Err != nil {
++		t.Fatal(result.Err)
++	}
++	if !result.SessionSnapshotComplete {
++		t.Fatal("successful Codex scan must be authoritative")
++	}
++	if len(result.Sessions) != 6 {
++		t.Fatalf("sessions = %d, want 6: %+v", len(result.Sessions), result.Sessions)
++	}
++
++	thread := findNativeSession(t, result.Sessions, "thread-cli")
++	if thread.ProjectPath != "/repo/new" || thread.Title != "renamed thread" || thread.RawPath != newestPath {
++		t.Fatalf("unexpected deduplicated thread: %+v", thread)
++	}
++	if thread.CreatedAt != time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC) ||
++		!thread.LastActivityAt.Equal(newer.UTC()) {
++		t.Fatalf("unexpected timestamps: %+v", thread)
++	}
++	wantResume := "cd '/repo/new' && CODEX_HOME=" +
++		core.ShellQuote(home) + " codex resume 'thread-cli'"
++	if thread.ResumeCommand != wantResume {
++		t.Fatalf("resume = %q, want %q", thread.ResumeCommand, wantResume)
++	}
++	if findNativeSession(t, result.Sessions, "thread-flat").Title != "flat thread" {
++		t.Fatal("flat layout or session name not indexed")
++	}
++	findNativeSession(t, result.Sessions, "thread-fork")
++	if strings.Contains(fmt.Sprint(result.Sessions), "private-value-not-read") {
++		t.Fatal("ignored Codex repository URL leaked into normalized sessions")
++	}
++}
++
++func TestCodexScannerSkipsMissingStore(t *testing.T) {
++	result := (CodexScanner{Home: t.TempDir()}).Scan(context.Background())
++	if !result.Skipped || result.Err != nil {
++		t.Fatalf("missing store result: %+v", result)
++	}
++}
++
++func TestCodexScannerTreatsNameIndexAsOptionalEnrichment(t *testing.T) {
++	home := t.TempDir()
++	writeCodexRollout(t, filepath.Join(home, "sessions"), "rollout-thread.jsonl", codexPayload(
++		"thread", "/repo/project", "cli", nil, "legacy", "2026-01-01T00:00:00Z",
++	), time.Unix(100, 0))
++	if err := os.Mkdir(filepath.Join(home, "session_index.jsonl"), 0o755); err != nil {
++		t.Fatal(err)
++	}
++
++	result := (CodexScanner{Home: home}).Scan(context.Background())
++	if result.Err != nil || !result.SessionSnapshotComplete || len(result.Sessions) != 1 {
++		t.Fatalf("optional index blocked scan: %+v", result)
++	}
++	if result.Message == "" || result.Sessions[0].Title != "Codex: project" {
++		t.Fatalf("index warning or fallback title missing: %+v", result)
++	}
++}
++
++func TestCodexScannerRejectsMalformedAuthoritativeMetadata(t *testing.T) {
++	tests := []struct {
++		name string
++		line string
++	}{
++		{name: "invalid json", line: "{"},
++		{name: "wrong item", line: `{"timestamp":"2026-01-01T00:00:00Z","type":"response_item","payload":{}}`},
++		{name: "missing id", line: `{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"cwd":"/repo","timestamp":"2026-01-01T00:00:00Z","source":"cli"}}`},
++		{name: "relative cwd", line: `{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"id","cwd":"repo","timestamp":"2026-01-01T00:00:00Z","source":"cli"}}`},
++		{name: "invalid timestamp", line: `{"timestamp":"invalid","type":"session_meta","payload":{"id":"id","cwd":"/repo","timestamp":"invalid","source":"cli"}}`},
++	}
++
++	for _, test := range tests {
++		t.Run(test.name, func(t *testing.T) {
++			home := t.TempDir()
++			path := filepath.Join(home, "sessions", "rollout-test.jsonl")
++			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++				t.Fatal(err)
++			}
++			if err := os.WriteFile(path, []byte(test.line+"\n"), 0o644); err != nil {
++				t.Fatal(err)
++			}
++			result := (CodexScanner{Home: home}).Scan(context.Background())
++			if result.Err != nil || result.SessionSnapshotComplete || result.Message == "" {
++				t.Fatalf("malformed rollout did not produce an incomplete warning: %+v", result)
++			}
++		})
++	}
++}
++
++func TestCodexRolloutUsesOuterTimestampFallback(t *testing.T) {
++	home := t.TempDir()
++	path := filepath.Join(home, "sessions", "rollout-fallback.jsonl")
++	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	line := `{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"id","cwd":"/repo","source":"cli"}}`
++	if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	result := (CodexScanner{Home: home}).Scan(context.Background())
++	if result.Err != nil || len(result.Sessions) != 1 {
++		t.Fatalf("outer timestamp fallback failed: %+v", result)
++	}
++	if got := result.Sessions[0].CreatedAt; got != time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) {
++		t.Fatalf("created at = %s", got)
++	}
++}
++
++func TestCodexScannerRejectsOversizedMetadataLine(t *testing.T) {
++	home := t.TempDir()
++	path := filepath.Join(home, "sessions", "rollout-test.jsonl")
++	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	line := `{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"id","cwd":"/repo","timestamp":"2026-01-01T00:00:00Z","source":"cli","base_instructions":"` +
++		strings.Repeat("x", codexMetadataLineLimit+1) + `"}}`
++	if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	result := (CodexScanner{Home: home}).Scan(context.Background())
++	if result.Err != nil || result.SessionSnapshotComplete || result.Message == "" {
++		t.Fatalf("oversized metadata did not produce an incomplete warning: %+v", result)
++	}
++}
++
++func codexPayload(id, cwd string, source any, parent *string, historyMode, timestamp string) map[string]any {
++	payload := map[string]any{
++		"session_id":       "session-" + id,
++		"id":               id,
++		"parent_thread_id": parent,
++		"timestamp":        timestamp,
++		"cwd":              cwd,
++		"originator":       "codex-cli",
++		"cli_version":      "1.0.0",
++		"history_mode":     historyMode,
++		"git": map[string]any{
++			"branch":         "main",
++			"commit_hash":    "abc123",
++			"repository_url": "private-value-not-read",
++		},
++	}
++	if source != nil {
++		payload["source"] = source
++	}
++	return payload
++}
++
++func writeCodexRollout(t *testing.T, sessionsRoot, relative string, payload map[string]any, modified time.Time) string {
++	t.Helper()
++	path := filepath.Join(sessionsRoot, filepath.FromSlash(relative))
++	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	line, err := json.Marshal(map[string]any{
++		"timestamp": payload["timestamp"],
++		"ordinal":   0,
++		"type":      "session_meta",
++		"payload":   payload,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(path, append(line, '\n'), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chtimes(path, modified, modified); err != nil {
++		t.Fatal(err)
++	}
++	return path
++}
+diff --git a/internal/adapters/scanner.go b/internal/adapters/scanner.go
+index c60acf5..9dc5f08 100644
+--- a/internal/adapters/scanner.go
++++ b/internal/adapters/scanner.go
+@@ -18,6 +18,7 @@ func DefaultScanners(cfg config.Config) []Scanner {
+ 		CopilotScanner{Root: cfg.Sources.CopilotSessionState},
+ 		HermesHistoryScanner{Database: cfg.Sources.HermesDatabase},
+ 		OpenCodeScanner{Database: cfg.Sources.OpenCodeDatabase},
++		CodexScanner{Home: cfg.Sources.CodexHome},
+ 	}
+ 	return append(scanners, LiveScanners()...)
+ }
+diff --git a/internal/cli/root.go b/internal/cli/root.go
+index 0fd67d5..4762160 100644
+--- a/internal/cli/root.go
++++ b/internal/cli/root.go
+@@ -155,6 +155,10 @@ func (a *appContext) scanCmd() *cobra.Command {
+ 					fmt.Printf("%s: skipped (%s)\n", r.Source, r.Message)
+ 					continue
+ 				}
++				if r.Message != "" {
++					fmt.Printf("%s: %d session(s), %d runtime(s) (%s)\n", r.Source, r.Sessions, r.Runtimes, r.Message)
++					continue
++				}
+ 				fmt.Printf("%s: %d session(s), %d runtime(s)\n", r.Source, r.Sessions, r.Runtimes)
+ 			}
+ 			count, err := db.CountSessions(ctx)
+@@ -164,7 +168,7 @@ func (a *appContext) scanCmd() *cobra.Command {
+ 			return nil
+ 		},
+ 	}
+-	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, hermes, opencode, herdr, tmux)")
++	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, hermes, opencode, codex, herdr, tmux)")
+ 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON")
+ 	return cmd
+ }
+@@ -288,6 +292,7 @@ func (a *appContext) doctorCmd() *cobra.Command {
+ 			fmt.Printf("Copilot session-state: %s [%s]\n", cfg.Sources.CopilotSessionState, existsLabel(cfg.Sources.CopilotSessionState))
+ 			fmt.Printf("Hermes database: %s [%s]\n", cfg.Sources.HermesDatabase, existsLabel(cfg.Sources.HermesDatabase))
+ 			fmt.Printf("OpenCode database: %s [%s]\n", cfg.Sources.OpenCodeDatabase, existsLabel(cfg.Sources.OpenCodeDatabase))
++			fmt.Printf("Codex home: %s [%s]\n", cfg.Sources.CodexHome, existsLabel(cfg.Sources.CodexHome))
+ 			fmt.Println()
+ 			for _, tool := range []string{"herdr", "tmux", "sqlite3"} {
+ 				path, err := exec.LookPath(tool)
+@@ -844,6 +849,8 @@ func sourcePath(cfg config.Config, source string) string {
+ 		return cfg.Sources.HermesDatabase
+ 	case "opencode":
+ 		return cfg.Sources.OpenCodeDatabase
++	case "codex":
++		return cfg.Sources.CodexHome
+ 	default:
+ 		return ""
+ 	}
+diff --git a/internal/cli/scan_runtime_test.go b/internal/cli/scan_runtime_test.go
+index 2a9088a..355a897 100644
+--- a/internal/cli/scan_runtime_test.go
++++ b/internal/cli/scan_runtime_test.go
+@@ -4,9 +4,11 @@ import (
+ 	"context"
+ 	"database/sql"
+ 	"errors"
++	"os"
+ 	"path/filepath"
+ 	"testing"
+ 
++	"github.com/jdbencardinop/tesserasessions/internal/adapters"
+ 	"github.com/jdbencardinop/tesserasessions/internal/core"
+ 	"github.com/jdbencardinop/tesserasessions/internal/store"
+ )
+@@ -97,3 +99,76 @@ func TestPersistScanSessionsOnlyPrunesCompleteSnapshots(t *testing.T) {
+ 		t.Fatalf("complete empty scan should prune session, got %v", err)
+ 	}
+ }
++
++func TestCodexAuthoritativeScanReconcilesRemovedRollouts(t *testing.T) {
++	home := t.TempDir()
++	sessions := filepath.Join(home, "sessions")
++	if err := os.MkdirAll(sessions, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	rollout := filepath.Join(sessions, "rollout-2026-01-01T00-00-00-thread.jsonl")
++	line := `{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"thread","cwd":"/repo","timestamp":"2026-01-01T00:00:00Z","source":"cli","history_mode":"legacy"}}`
++	if err := os.WriteFile(rollout, []byte(line+"\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close() //nolint:errcheck
++	ctx := context.Background()
++	scanner := adapters.CodexScanner{Home: home}
++	first := scanner.Scan(ctx)
++	if first.Err != nil || len(first.Sessions) != 1 {
++		t.Fatalf("initial scan: %+v", first)
++	}
++	if err := persistScanSessions(ctx, db, first); err != nil {
++		t.Fatal(err)
++	}
++	sessionID := first.Sessions[0].ID
++
++	if err := os.Remove(rollout); err != nil {
++		t.Fatal(err)
++	}
++	malformed := filepath.Join(sessions, "rollout-in-progress.jsonl")
++	if err := os.WriteFile(malformed, []byte("{"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	newRollout := filepath.Join(sessions, "rollout-new.jsonl")
++	newLine := `{"timestamp":"2026-01-02T00:00:00Z","type":"session_meta","payload":{"id":"new-thread","cwd":"/repo/new","timestamp":"2026-01-02T00:00:00Z","source":"cli","history_mode":"legacy"}}`
++	if err := os.WriteFile(newRollout, []byte(newLine+"\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	incomplete := scanner.Scan(ctx)
++	if incomplete.Err != nil || incomplete.SessionSnapshotComplete || incomplete.Message == "" || len(incomplete.Sessions) != 1 {
++		t.Fatalf("incomplete scan: %+v", incomplete)
++	}
++	if err := persistScanSessions(ctx, db, incomplete); err != nil {
++		t.Fatal(err)
++	}
++	newSessionID := incomplete.Sessions[0].ID
++	if _, err := db.GetSession(ctx, newSessionID); err != nil {
++		t.Fatalf("incomplete Codex scan did not refresh valid row: %v", err)
++	}
++	if _, err := db.GetSession(ctx, sessionID); err != nil {
++		t.Fatalf("incomplete Codex scan pruned prior row: %v", err)
++	}
++
++	if err := os.Remove(malformed); err != nil {
++		t.Fatal(err)
++	}
++	complete := scanner.Scan(ctx)
++	if complete.Err != nil || !complete.SessionSnapshotComplete || len(complete.Sessions) != 1 {
++		t.Fatalf("empty authoritative scan: %+v", complete)
++	}
++	if err := persistScanSessions(ctx, db, complete); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := db.GetSession(ctx, sessionID); !errors.Is(err, sql.ErrNoRows) {
++		t.Fatalf("removed Codex rollout remained in inventory: %v", err)
++	}
++	if _, err := db.GetSession(ctx, newSessionID); err != nil {
++		t.Fatalf("valid Codex rollout was lost after complete scan: %v", err)
++	}
++}
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 4f34812..4d9ea3f 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -27,6 +27,7 @@ type SourcesConfig struct {
+ 	CopilotSessionState string `yaml:"copilot_session_state"`
+ 	HermesDatabase      string `yaml:"hermes_database"`
+ 	OpenCodeDatabase    string `yaml:"opencode_database"`
++	CodexHome           string `yaml:"codex_home"`
+ }
+ 
+ type SummaryConfig struct {
+@@ -71,6 +72,7 @@ func DefaultConfig() Config {
+ 			CopilotSessionState: filepath.Join(copilotRoot, "session-state"),
+ 			HermesDatabase:      defaultHermesDatabase(home),
+ 			OpenCodeDatabase:    defaultOpenCodeDatabase(home),
++			CodexHome:           defaultCodexHome(home),
+ 		},
+ 	}
+ }
+@@ -96,6 +98,7 @@ func Load(path string) (Config, error) {
+ 	cfg.Sources.CopilotSessionState = ExpandPath(firstNonEmpty(cfg.Sources.CopilotSessionState, DefaultConfig().Sources.CopilotSessionState))
+ 	cfg.Sources.HermesDatabase = ExpandPath(firstNonEmpty(cfg.Sources.HermesDatabase, DefaultConfig().Sources.HermesDatabase))
+ 	cfg.Sources.OpenCodeDatabase = ExpandPath(firstNonEmpty(cfg.Sources.OpenCodeDatabase, DefaultConfig().Sources.OpenCodeDatabase))
++	cfg.Sources.CodexHome = ExpandPath(firstNonEmpty(cfg.Sources.CodexHome, DefaultConfig().Sources.CodexHome))
+ 	if cfg.Live.DefaultBackend == "" {
+ 		cfg.Live.DefaultBackend = "herdr"
+ 	}
+@@ -180,3 +183,10 @@ func hermesBaseDir(home, goos, localAppData string) string {
+ 	}
+ 	return filepath.Join(home, ".hermes")
+ }
++
++func defaultCodexHome(home string) string {
++	if codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME")); codexHome != "" {
++		return ExpandPath(codexHome)
++	}
++	return filepath.Join(home, ".codex")
++}
+diff --git a/internal/config/config_test.go b/internal/config/config_test.go
+index 38f7017..be74526 100644
+--- a/internal/config/config_test.go
++++ b/internal/config/config_test.go
+@@ -71,3 +71,32 @@ func TestHermesBaseDirUsesWindowsLocalAppData(t *testing.T) {
+ 		t.Fatalf("Hermes Windows base = %q, want %q", got, want)
+ 	}
+ }
++
++func TestDefaultCodexHomeHonorsOverride(t *testing.T) {
++	home := t.TempDir()
++	t.Setenv("CODEX_HOME", filepath.Join(home, "custom-codex"))
++	if got, want := defaultCodexHome(home), filepath.Join(home, "custom-codex"); got != want {
++		t.Fatalf("Codex home = %q, want %q", got, want)
++	}
++	t.Setenv("CODEX_HOME", "")
++	if got, want := defaultCodexHome(home), filepath.Join(home, ".codex"); got != want {
++		t.Fatalf("default Codex home = %q, want %q", got, want)
++	}
++}
++
++func TestConfiguredCodexHomeOverridesEnvironment(t *testing.T) {
++	home := t.TempDir()
++	configured := filepath.Join(home, "configured")
++	t.Setenv("CODEX_HOME", filepath.Join(home, "environment"))
++	path := filepath.Join(home, "config.yaml")
++	if err := os.WriteFile(path, []byte("sources:\n  codex_home: "+configured+"\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	cfg, err := Load(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if cfg.Sources.CodexHome != configured {
++		t.Fatalf("Codex home = %q, want %q", cfg.Sources.CodexHome, configured)
++	}
++}

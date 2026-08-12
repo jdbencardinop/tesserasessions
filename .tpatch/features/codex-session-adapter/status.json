@@ -1,0 +1,32 @@
+{
+  "id": "codex-session-adapter",
+  "slug": "codex-session-adapter",
+  "title": "Add a read-only, metadata-first OpenAI Codex CLI historical session adapter using authoritative active JSONL rollout files. Preserve exact thread IDs, cwd, names, timestamps, Git metadata, interactive-source filtering, custom CODEX_HOME resume context, authoritative reconciliation, synthetic fixtures, and documentation; defer archived sessions, compressed .jsonl.zst rollouts, and SQLite acceleration.",
+  "state": "applied",
+  "compatibility": "unknown",
+  "requested_at": "2026-08-12T10:15:43Z",
+  "updated_at": "2026-08-12T10:41:20Z",
+  "last_command": "verify",
+  "notes": "landed at 2026-08-12T10:41:44Z",
+  "apply": {
+    "completed_at": "2026-08-12T10:41:01Z",
+    "base_commit": "3d0a29506514162bb3449f92da56d6ef74b08622",
+    "has_patch": true
+  },
+  "reconcile": {},
+  "depends_on": [
+    {
+      "slug": "agent-source-expansion",
+      "kind": "hard"
+    }
+  ],
+  "verify": {
+    "verified_at": "2026-08-12T10:41:20Z",
+    "passed": false,
+    "recipe_hash_at_verify": "55f19743c6c91e8c4b73a26384f6bcefae539bf5ae1731f0ea911b8216370e99",
+    "patch_hash_at_verify": "f893c05af2cd913209f51a4a3b0e0af038e3263036923e55e33baa2f7a19ba39",
+    "parent_snapshot": {
+      "agent-source-expansion": "applied"
+    }
+  }
+}

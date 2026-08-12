@@ -1,6 +1,7 @@
 # tesserasessions
 
-`tss` is a local-first CLI for inventorying coding-agent sessions across tools like GitHub Copilot CLI, Claude Code, Herdr, and tmux.
+`tss` is a local-first CLI for inventorying coding-agent sessions across tools
+like GitHub Copilot CLI, Claude Code, Hermes, OpenCode, Codex, Herdr, and tmux.
 
 It answers: "What agent sessions exist, what project are they for, when did they last move, and how do I get back to them?"
 
@@ -109,6 +110,7 @@ Useful flags:
 
 ```sh
 tss scan --source claude
+tss scan --source codex
 printf '%s\n' '{"schema_version":1,"queries":[{"query_id":"repo","path":"/absolute/repo"}]}' | tss status --json
 tss list --source copilot --limit 10
 tss list --query tesseraspaces
@@ -146,6 +148,8 @@ Initial adapters:
   `COPILOT_HOME/session-state`.
 - `hermes`: opens the current Hermes `state.db` read-only.
 - `opencode`: opens the current OpenCode SQLite database read-only.
+- `codex`: reads the bounded metadata line from active Codex rollout JSONL
+  files under `CODEX_HOME` and uses the optional session-name index.
 - `herdr`: uses the default JSON from `herdr agent list` when Herdr is installed
   and running, preserving agent target, pane IDs, and `agent_status`.
 - `tmux`: uses `tmux list-panes -a` and reports only panes whose foreground
@@ -168,6 +172,7 @@ Overrides:
 ```sh
 TSS_CONFIG=/path/to/config.yaml tss scan
 TSS_DATA_DIR=/path/to/data tss scan
+CODEX_HOME=/path/to/codex-home tss scan --source codex
 tss --db /path/to/sessions.db list
 ```
 

@@ -71,3 +71,32 @@ func TestHermesBaseDirUsesWindowsLocalAppData(t *testing.T) {
 		t.Fatalf("Hermes Windows base = %q, want %q", got, want)
 	}
 }
+
+func TestDefaultCodexHomeHonorsOverride(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", filepath.Join(home, "custom-codex"))
+	if got, want := defaultCodexHome(home), filepath.Join(home, "custom-codex"); got != want {
+		t.Fatalf("Codex home = %q, want %q", got, want)
+	}
+	t.Setenv("CODEX_HOME", "")
+	if got, want := defaultCodexHome(home), filepath.Join(home, ".codex"); got != want {
+		t.Fatalf("default Codex home = %q, want %q", got, want)
+	}
+}
+
+func TestConfiguredCodexHomeOverridesEnvironment(t *testing.T) {
+	home := t.TempDir()
+	configured := filepath.Join(home, "configured")
+	t.Setenv("CODEX_HOME", filepath.Join(home, "environment"))
+	path := filepath.Join(home, "config.yaml")
+	if err := os.WriteFile(path, []byte("sources:\n  codex_home: "+configured+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sources.CodexHome != configured {
+		t.Fatalf("Codex home = %q, want %q", cfg.Sources.CodexHome, configured)
+	}
+}

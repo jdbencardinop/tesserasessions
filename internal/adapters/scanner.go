@@ -18,6 +18,7 @@ func DefaultScanners(cfg config.Config) []Scanner {
 		CopilotScanner{Root: cfg.Sources.CopilotSessionState},
 		HermesHistoryScanner{Database: cfg.Sources.HermesDatabase},
 		OpenCodeScanner{Database: cfg.Sources.OpenCodeDatabase},
+		CodexScanner{Home: cfg.Sources.CodexHome},
 	}
 	return append(scanners, LiveScanners()...)
 }

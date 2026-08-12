@@ -31,6 +31,7 @@ cli-inventory-core
 |-- live-herdr-tmux-control      (hard)
 |   `-- runtime-status-contract  (hard)
 |       `-- agent-source-expansion (soft ordering)
+|           `-- codex-session-adapter (hard)
 |-- smart-session-summaries      (hard)
 `-- session-ux-roadmap           (hard)
     `-- smart-session-summaries  (soft ordering hint)
@@ -59,8 +60,14 @@ See [Runtime status provider contract](runtime-status-contract.md).
 
 `agent-source-expansion` hardened the existing Claude/Copilot adapters and added
 current Hermes/OpenCode SQLite stores while retaining the metadata-first,
-read-only boundary. Codex and t3code remain later, separate work that should be
-registered as independent features.
+read-only boundary.
+
+## Delivered - Codex session adapter
+
+`codex-session-adapter` adds active OpenAI Codex CLI rollout discovery through
+bounded first-line metadata reads, exact thread identities, optional indexed
+names, source filtering, deduplication, and source-qualified resume commands.
+Archived/compressed rollouts and t3code remain separate work.
 
 ## Tracked features
 
@@ -71,7 +78,8 @@ registered as independent features.
 | `live-herdr-tmux-control` | Live-control foundation | Improve live status matching, attach/open/send/run behavior, Herdr JSON support, and tmux pane targeting. | Applied; Herdr remains preferred and tmux remains fallback. |
 | `runtime-status-contract` | Status provider | Publish a side-effect-free batch JSON provider with freshness, match evidence, raw runtimes, and separate presence/agent-state aggregates. | Applied and verified; does not own the `tws` rollup and never guesses cwd-less sessions. |
 | `smart-session-summaries` | Summary quality | Better local titles, goals, blockers, next actions, and confidence from recent transcript/pane output. | Remote LLM support must remain explicit opt-in. |
-| `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. Codex/t3code remain later. |
+| `agent-source-expansion` | Historical adapter expansion | Harden Claude/Copilot and add current Hermes/OpenCode historical adapters. | Applied; read-only and metadata-first. |
+| `codex-session-adapter` | Codex historical adapter | Add active Codex JSONL rollout metadata, names, exact resume, filtering, and reconciliation. | Applied; archived and compressed rollouts remain deferred. |
 | `session-ux-roadmap` | Operator UX | Add project grouping, fuzzy/content search, tags, pin/done markers, stale thresholds, shell completions, and better filters. | Depends on stable inventory and summary metadata. |
 
 ## Milestones
@@ -143,11 +151,11 @@ Delivered:
 - Exact Claude/Copilot metadata and resume identities.
 - Hermes Agent state database/sessions.
 - OpenCode SQLite sessions/projects.
+- Active Codex JSONL rollout metadata and exact thread resume.
 - Parser fixtures using redacted or synthetic data.
 
 Remaining:
 
-- Codex historical sessions as a separate feature.
 - t3code application/server sessions as a separate feature after Codex or when
   the desktop/server inventory contract is defined.
 

@@ -155,6 +155,10 @@ func (a *appContext) scanCmd() *cobra.Command {
 					fmt.Printf("%s: skipped (%s)\n", r.Source, r.Message)
 					continue
 				}
+				if r.Message != "" {
+					fmt.Printf("%s: %d session(s), %d runtime(s) (%s)\n", r.Source, r.Sessions, r.Runtimes, r.Message)
+					continue
+				}
 				fmt.Printf("%s: %d session(s), %d runtime(s)\n", r.Source, r.Sessions, r.Runtimes)
 			}
 			count, err := db.CountSessions(ctx)
@@ -164,7 +168,7 @@ func (a *appContext) scanCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, hermes, opencode, herdr, tmux)")
+	cmd.Flags().StringVar(&source, "source", "", "scan one source (claude, copilot, hermes, opencode, codex, herdr, tmux)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "print JSON")
 	return cmd
 }
@@ -288,6 +292,7 @@ func (a *appContext) doctorCmd() *cobra.Command {
 			fmt.Printf("Copilot session-state: %s [%s]\n", cfg.Sources.CopilotSessionState, existsLabel(cfg.Sources.CopilotSessionState))
 			fmt.Printf("Hermes database: %s [%s]\n", cfg.Sources.HermesDatabase, existsLabel(cfg.Sources.HermesDatabase))
 			fmt.Printf("OpenCode database: %s [%s]\n", cfg.Sources.OpenCodeDatabase, existsLabel(cfg.Sources.OpenCodeDatabase))
+			fmt.Printf("Codex home: %s [%s]\n", cfg.Sources.CodexHome, existsLabel(cfg.Sources.CodexHome))
 			fmt.Println()
 			for _, tool := range []string{"herdr", "tmux", "sqlite3"} {
 				path, err := exec.LookPath(tool)
@@ -844,6 +849,8 @@ func sourcePath(cfg config.Config, source string) string {
 		return cfg.Sources.HermesDatabase
 	case "opencode":
 		return cfg.Sources.OpenCodeDatabase
+	case "codex":
+		return cfg.Sources.CodexHome
 	default:
 		return ""
 	}

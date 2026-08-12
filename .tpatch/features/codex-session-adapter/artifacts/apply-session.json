@@ -1,0 +1,8 @@
+{
+  "slug": "codex-session-adapter",
+  "completed_at": "2026-08-12T10:41:01Z",
+  "base_commit": "3d0a29506514162bb3449f92da56d6ef74b08622",
+  "has_patch": true,
+  "validation_status": "passed",
+  "validation_notes": "tpatch test — command: go test ./..."
+}

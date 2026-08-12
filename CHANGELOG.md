@@ -21,4 +21,7 @@ All notable changes to `tesserasessions` will be documented in this file.
   snapshots.
 - Preserve source-store environment in exact resume commands and continue
   Claude metadata scanning after oversized payload rows.
+- Add a read-only OpenAI Codex CLI adapter for active JSONL rollout metadata,
+  exact thread resume, interactive-source filtering, indexed names, and
+  authoritative reconciliation.
 - Add tpatch-tracked roadmap metadata and project documentation.

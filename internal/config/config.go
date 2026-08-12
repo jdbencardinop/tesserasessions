@@ -27,6 +27,7 @@ type SourcesConfig struct {
 	CopilotSessionState string `yaml:"copilot_session_state"`
 	HermesDatabase      string `yaml:"hermes_database"`
 	OpenCodeDatabase    string `yaml:"opencode_database"`
+	CodexHome           string `yaml:"codex_home"`
 }
 
 type SummaryConfig struct {
@@ -71,6 +72,7 @@ func DefaultConfig() Config {
 			CopilotSessionState: filepath.Join(copilotRoot, "session-state"),
 			HermesDatabase:      defaultHermesDatabase(home),
 			OpenCodeDatabase:    defaultOpenCodeDatabase(home),
+			CodexHome:           defaultCodexHome(home),
 		},
 	}
 }
@@ -96,6 +98,7 @@ func Load(path string) (Config, error) {
 	cfg.Sources.CopilotSessionState = ExpandPath(firstNonEmpty(cfg.Sources.CopilotSessionState, DefaultConfig().Sources.CopilotSessionState))
 	cfg.Sources.HermesDatabase = ExpandPath(firstNonEmpty(cfg.Sources.HermesDatabase, DefaultConfig().Sources.HermesDatabase))
 	cfg.Sources.OpenCodeDatabase = ExpandPath(firstNonEmpty(cfg.Sources.OpenCodeDatabase, DefaultConfig().Sources.OpenCodeDatabase))
+	cfg.Sources.CodexHome = ExpandPath(firstNonEmpty(cfg.Sources.CodexHome, DefaultConfig().Sources.CodexHome))
 	if cfg.Live.DefaultBackend == "" {
 		cfg.Live.DefaultBackend = "herdr"
 	}
@@ -179,4 +182,11 @@ func hermesBaseDir(home, goos, localAppData string) string {
 		return filepath.Join(localAppData, "hermes")
 	}
 	return filepath.Join(home, ".hermes")
+}
+
+func defaultCodexHome(home string) string {
+	if codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME")); codexHome != "" {
+		return ExpandPath(codexHome)
+	}
+	return filepath.Join(home, ".codex")
 }

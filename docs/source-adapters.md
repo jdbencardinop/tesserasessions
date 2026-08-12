@@ -11,6 +11,7 @@ opened read-only and remain authoritative.
 | GitHub Copilot CLI | `~/.copilot/session-state/*/workspace.yaml` or `COPILOT_HOME` | Reads workspace ID, cwd/Git root, repository, branch, name, and timestamps. | `copilot --resume=<id>` |
 | Hermes Agent | `${HERMES_HOME}/state.db`, active profile DB, or `sources.hermes_database` | Queries a private DB+WAL/journal snapshot; lists unarchived logical CLI roots from metadata columns only. | `hermes --resume <id>` |
 | OpenCode | `OPENCODE_DB`, XDG data DB, or `sources.opencode_database` | Queries a private DB+WAL/journal snapshot; joins non-archived root sessions to projects. | `opencode --session <id>` |
+| OpenAI Codex CLI | `${CODEX_HOME}/sessions/**/*.jsonl` or `sources.codex_home` | Reads only each active rollout's bounded first `session_meta` line; optionally enriches names from `session_index.jsonl`. | `codex resume <id>` |
 
 Herdr and tmux are separate live-runtime providers. They are not historical
 transcript stores.
@@ -23,6 +24,7 @@ sources:
   copilot_session_state: ~/.copilot/session-state
   hermes_database: ~/.hermes/state.db
   opencode_database: ~/.local/share/opencode/opencode.db
+  codex_home: ~/.codex
 ```
 
 Environment precedence:
@@ -34,6 +36,7 @@ Environment precedence:
 - OpenCode: `OPENCODE_DB`, then `XDG_DATA_HOME`, then
   `~/.local/share/opencode/opencode.db` on every platform, matching OpenCode's
   `xdg-basedir` dependency.
+- Codex: `CODEX_HOME`, then `~/.codex`.
 - Hermes on Windows defaults to `%LOCALAPPDATA%\hermes\state.db`.
 
 Explicit config values override these defaults.
@@ -45,6 +48,7 @@ CLAUDE_CONFIG_DIR='/custom/claude' claude --resume '<id>'
 COPILOT_HOME='/custom/copilot' copilot --resume='<id>'
 HERMES_HOME='/custom/hermes/profiles/coder' hermes --resume '<id>'
 OPENCODE_DB='/custom/opencode.db' opencode --session '<id>'
+CODEX_HOME='/custom/codex' codex resume '<id>'
 ```
 
 When a root `HERMES_HOME` or the platform default contains a non-default
@@ -65,6 +69,9 @@ redirect the resume command to another database.
 - Hermes message content, system prompts, gateway routing identity, and user/chat
   identifiers are not queried.
 - OpenCode messages, parts, credentials, events, and prompts are not queried.
+- Codex prompts, responses, and tool calls after the first metadata line are
+  not read. The narrow metadata decoder ignores and never retains embedded base
+  instructions, dynamic tools, or repository URLs.
 - Claude transcript content is not needed for inventory metadata; content
   remains available only to explicit lazy search/summarize workflows.
 - Copilot `events.jsonl` and `session.db` are not read by the inventory scanner;
@@ -75,14 +82,18 @@ redirect the resume command to another database.
 - Hermes: `source='cli'`, unarchived logical roots only; compression chains use
   their latest continuation metadata.
 - OpenCode: non-archived root sessions with valid project relationships only.
+- Codex: active independently resumable `cli`, `vscode`, `atlas`, and `chatgpt`
+  roots only. Parent threads and noninteractive/internal sources are excluded.
 - Claude/Copilot: one inventory row per native session/workspace ID.
 
 Successful authoritative scans reconcile the local inventory: sessions deleted,
 archived, or filtered out upstream disappear locally. Manual titles, pins, and
 tags remain attached to sessions that still exist. Missing, failed, or malformed
-source scans never prune prior inventory rows.
+source scans never prune prior inventory rows. A partial Codex rollout is
+reported as an incomplete scan; other valid Codex rows still refresh.
 
 Hermes branch conversations are deferred; compression continuations are
 projected into their stable root inventory entry. Archived sessions, internal
 delegate/tool children, OpenCode legacy JSON, development-channel OpenCode
-databases, Codex, and t3code are follow-up compatibility work.
+databases, Codex archived or `.jsonl.zst` rollouts, Codex SQLite acceleration,
+and t3code are follow-up compatibility work.
