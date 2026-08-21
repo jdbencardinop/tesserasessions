@@ -27,7 +27,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: CHANGELOG.md, README.md, docs/cheatsheet.md, docs/roadmap.md, docs/source-adapters.md, internal/adapters/codex.go, internal/adapters/codex_test.go, internal/adapters/scanner.go, internal/cli/root.go, internal/cli/scan_runtime_test.go, internal/config/config.go, internal/config/config_test.go
 - **claim_ids**: (none)
-- **base_commit**: `55bb64378528db1458cf4f13d0aba2dc8af9cec6`
+- **base_commit**: `15dff5f13ce4733fbf70a0e4f4ec8f4c8c1396b6`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions

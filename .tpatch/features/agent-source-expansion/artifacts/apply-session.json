@@ -1,7 +1,7 @@
 {
   "slug": "agent-source-expansion",
   "completed_at": "2026-08-12T09:30:20Z",
-  "base_commit": "27a161fa3fdfcc8f2439bb3362b51858eac0ecdf",
+  "base_commit": "b85896f709859575a1ba454dfb603b90183d7857",
   "has_patch": true,
   "validation_status": "passed",
   "validation_notes": "tpatch test — command: go test ./..."

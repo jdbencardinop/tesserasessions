@@ -21,7 +21,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: Makefile, LICENSE, CHANGELOG.md, .gitignore, README.md, docs/cheatsheet.md, internal/buildinfo/, internal/cli/root.go
 - **claim_ids**: (none)
-- **base_commit**: `697236b8681ba42ad0575efbc87e6e145d02023d`
+- **base_commit**: `1c398faab13c8ac084f72d7d737ae50a05c307af`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions

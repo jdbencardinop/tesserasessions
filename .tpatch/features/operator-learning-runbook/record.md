@@ -22,7 +22,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: .gitignore, CHANGELOG.md, README.md, docs/cheatsheet.md, docs/roadmap.md, docs/learn/
 - **claim_ids**: (none)
-- **base_commit**: `9c20ebb11e64080c6a2a4bfca8493dff761eb7c7`
+- **base_commit**: `5fde93f19697702cde1b80727463ce98eeb28b23`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions

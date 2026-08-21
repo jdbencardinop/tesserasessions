@@ -10,7 +10,7 @@
   "notes": "landed at 2026-08-12T10:41:44Z",
   "apply": {
     "completed_at": "2026-08-12T10:41:01Z",
-    "base_commit": "55bb64378528db1458cf4f13d0aba2dc8af9cec6",
+    "base_commit": "15dff5f13ce4733fbf70a0e4f4ec8f4c8c1396b6",
     "has_patch": true
   },
   "reconcile": {},

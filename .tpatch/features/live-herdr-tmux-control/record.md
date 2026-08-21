@@ -22,7 +22,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: internal/adapters/herdr.go, internal/adapters/herdr_test.go, internal/cli/root.go, internal/cli/live_commands_test.go, README.md, docs/cheatsheet.md, docs/roadmap.md
 - **claim_ids**: (none)
-- **base_commit**: `50d1b4b7eaf05ceb8924271993fe90eb4eee405d`
+- **base_commit**: `1ec3777112fee1e6caa4b72d24653f2ecdaedf90`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions
