@@ -5,9 +5,10 @@ cross-machine handoff; delete it after the WSL session has absorbed the context.
 
 ## Current state
 
-- Repository: `https://github.com/jdbencardinop/tesserasessions` (private).
+- Repository: `https://github.com/jdbencardinop/tesserasessions` (public).
 - Branch: `main`, synchronized with `origin/main`.
-- Baseline before this handoff: `5340f10`.
+- The repository history was privacy-rewritten after the original
+  `5a92810` handoff. Every older commit ID was replaced.
 - Product: local-first `tss` CLI for coding-agent historical inventory, search,
   curation, native resume, and Herdr/tmux runtime observation/control.
 - Delivered historical sources: Claude Code, GitHub Copilot CLI, Hermes Agent,
@@ -52,6 +53,26 @@ environment. A missing source or live backend is an honest `skipped` or
 unavailable result, not a reason to fabricate fixtures outside tests.
 
 ## Restore the repository
+
+### Existing clone from before the privacy rewrite
+
+Do not merge or pull the rewritten branch into the old history. If the clone has
+no local work, replace its remote-tracking ref and reset it:
+
+```sh
+git status --short
+# Continue only when the command above prints nothing.
+git fetch --prune origin \
+  +refs/heads/main:refs/remotes/origin/main
+git switch main
+git reset --hard origin/main
+git status --short --branch
+```
+
+If the old clone has local work, preserve it separately and make a fresh clone
+instead of resetting. Do not push an old-history branch back to the repository.
+
+### Fresh clone
 
 Authenticate GitHub CLI if needed:
 
