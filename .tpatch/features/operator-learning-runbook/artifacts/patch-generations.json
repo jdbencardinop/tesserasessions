@@ -13,7 +13,7 @@
       "recipe_sha256": "25137f33192486b67215c1650f70fd26289ca4c0c670f5e752d3b67cfc75504c",
       "canonical_patch": "artifacts/post-apply.patch",
       "audit_patch": "",
-      "base_commit": "982029a2d0b07bc84fb5d040f6be2c2430a263fb",
+      "base_commit": "9c20ebb11e64080c6a2a4bfca8493dff761eb7c7",
       "upper": {
         "kind": "working-tree",
         "ref": "working-tree",

@@ -21,7 +21,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: Makefile, LICENSE, CHANGELOG.md, .gitignore, README.md, docs/cheatsheet.md, internal/buildinfo/, internal/cli/root.go
 - **claim_ids**: (none)
-- **base_commit**: `bcf14a010922fee6b8ca2f7c43e025d3ec5ddb1d`
+- **base_commit**: `697236b8681ba42ad0575efbc87e6e145d02023d`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions
@@ -32,4 +32,3 @@ To re-apply this feature to a clean checkout:
 # From the feature's artifacts directory:
 git apply .tpatch/features/repo-scaffold-consistency/artifacts/post-apply.patch
 ```
-

@@ -33,7 +33,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: (none)
 - **claim_ids**: (none)
-- **base_commit**: `eb35fe6a9b414c808ff86f9002bbe9dcb0c97656`
+- **base_commit**: `27a161fa3fdfcc8f2439bb3362b51858eac0ecdf`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions
@@ -44,4 +44,3 @@ To re-apply this feature to a clean checkout:
 # From the feature's artifacts directory:
 git apply .tpatch/features/agent-source-expansion/artifacts/post-apply.patch
 ```
-

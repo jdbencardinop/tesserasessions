@@ -22,7 +22,7 @@
 - **capture_mode**: `working-tree-all`
 - **pathspecs**: internal/adapters/herdr.go, internal/adapters/herdr_test.go, internal/cli/root.go, internal/cli/live_commands_test.go, README.md, docs/cheatsheet.md, docs/roadmap.md
 - **claim_ids**: (none)
-- **base_commit**: `1d915dba7989dca23eb031f729a8df1321709144`
+- **base_commit**: `50d1b4b7eaf05ceb8924271993fe90eb4eee405d`
 - **upper_commit**: `working-tree`
 
 ## Replay Instructions
@@ -33,4 +33,3 @@ To re-apply this feature to a clean checkout:
 # From the feature's artifacts directory:
 git apply .tpatch/features/live-herdr-tmux-control/artifacts/post-apply.patch
 ```
-
